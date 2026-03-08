@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# uv / virtualenv
+.venv/
+.python-version
+
+# Environment
+.env
+
+# Generated PDFs (uploaded during demo)
+forms/*.pdf
+
+# Editor
+.vscode/
+.idea/
+*.swp

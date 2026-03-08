@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Secrets — never commit these
+**/.env
+backend/.env
+
+# Python artifacts (in case run from root)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node artifacts (in case run from root)
+node_modules/
+
+# Build outputs
+dist/
+build/

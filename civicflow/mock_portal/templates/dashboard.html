@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CivicFlow — Government Portal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d0d; color: #e5e5e5;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    header {
+      background: #111; border-bottom: 1px solid #1f1f1f;
+      padding: 0 2rem; height: 56px;
+      display: flex; align-items: center; gap: 12px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .logo { font-size: 1.1rem; font-weight: 700; color: #fff; }
+    .logo span { color: #7c3aed; }
+    .tag { font-size: 0.7rem; color: #888; background: #1f1f1f; border: 1px solid #2a2a2a; padding: 2px 10px; border-radius: 99px; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-left: auto; box-shadow: 0 0 6px #22c55e; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .container { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 2rem; }
+    @media(max-width:800px){ .stats{grid-template-columns:repeat(2,1fr)} }
+    .stat { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 1rem 1.2rem; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1; }
+    .stat-label { font-size: 0.7rem; color: #666; margin-top: 6px; text-transform: uppercase; letter-spacing: .05em; }
+
+    /* Table */
+    .table-wrap { background: #111; border: 1px solid #1f1f1f; border-radius: 14px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: #0d0d0d; padding: .75rem 1rem; text-align: left;
+      font-size: .65rem; font-weight: 600; color: #555;
+      text-transform: uppercase; letter-spacing: .07em;
+      border-bottom: 1px solid #1f1f1f; white-space: nowrap;
+    }
+    tbody td { padding: 1rem; border-bottom: 1px solid #161616; font-size: .85rem; vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #131313; }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 99px;
+      font-size: .7rem; font-weight: 600; white-space: nowrap;
+    }
+    .badge::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+    .badge-received     { background:#0f2744; color:#60a5fa; }
+    .badge-under_review { background:#2d1a00; color:#fbbf24; }
+    .badge-next_step    { background:#0a1f0f; color:#4ade80; border:1px solid #14532d; }
+    .badge-failed       { background:#200a0a; color:#f87171; }
+    .badge-resolved     { background:#14532d; color:#4ade80; }
+
+    /* Workflow stepper */
+    .stepper { display: flex; align-items: flex-start; gap: 0; margin-top: 10px; }
+    .step {
+      display: flex; flex-direction: column; align-items: center;
+      flex: 1; position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 11px; left: calc(50% + 11px);
+      width: calc(100% - 22px); height: 2px;
+      background: #2a2a2a;
+      transition: background .3s;
+    }
+    .step.done:not(:last-child)::after { background: #14532d; }
+
+    .step-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid #2a2a2a;
+      background: #111;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6rem; font-weight: 700; color: #555;
+      position: relative; z-index: 1;
+      transition: all .3s;
+      flex-shrink: 0;
+    }
+    .step.done .step-dot   { background: #14532d; border-color: #22c55e; color: #4ade80; }
+    .step.active .step-dot { background: #1e3a5f; border-color: #3b82f6; color: #60a5fa; box-shadow: 0 0 8px rgba(59,130,246,.4); }
+    .step.failed .step-dot { background: #2d1515; border-color: #f87171; color: #f87171; }
+
+    .step-label {
+      font-size: .6rem; color: #555; text-align: center;
+      margin-top: 5px; max-width: 70px; line-height: 1.3;
+      transition: color .3s;
+    }
+    .step.done .step-label   { color: #4ade80; }
+    .step.active .step-label { color: #60a5fa; }
+    .step.failed .step-label { color: #f87171; }
+
+    /* Buttons */
+    .btn {
+      padding: .4rem .85rem; border-radius: 7px; border: 1px solid transparent;
+      cursor: pointer; font-size: .75rem; font-weight: 600;
+      transition: opacity .15s, transform .1s; white-space: nowrap; font-family: inherit;
+    }
+    .btn:hover:not(:disabled) { opacity: .8; transform: translateY(-1px); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn:disabled { opacity: .3; cursor: not-allowed; }
+    .btn-next  { background: #0a1f0f; color: #4ade80; border-color: #14532d; }
+    .btn-abort { background: #200a0a; color: #f87171; border-color: #7f1d1d; }
+    .btn-pdf   { background: #0f2744; color: #60a5fa; border-color: #1e3a5f; }
+    .action-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+    .ref-id { font-family: 'Courier New', monospace; font-size: .78rem; color: #7c3aed; font-weight: 600; }
+    .muted   { color: #555; font-size: .78rem; }
+    .empty-row td { text-align: center; padding: 4rem; color: #444; }
+
+    /* Modals */
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.78); z-index: 200;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+      padding: 1.75rem; width: 480px; max-width: 94vw;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .modal-title { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .modal-sub   { font-size: .78rem; color: #666; margin-bottom: 1.25rem; }
+
+    /* Next-step preview inside modal */
+    .next-preview {
+      background: #0a1f0f; border: 1px solid #14532d; border-radius: 10px;
+      padding: .9rem 1rem; margin-bottom: 1.25rem;
+    }
+    .next-preview-label { font-size: .65rem; color: #4ade80; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .next-preview-text  { font-size: .9rem; color: #e5e5e5; font-weight: 500; }
+
+    /* Stepper in modal */
+    .modal-stepper { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25rem; max-height: 220px; overflow-y: auto; }
+    .modal-step {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: .6rem .8rem; border-radius: 8px;
+      border: 1px solid transparent;
+    }
+    .modal-step.ms-done   { background: #0a1f0f; border-color: #14532d; }
+    .modal-step.ms-active { background: #0f2744; border-color: #1e3a5f; }
+    .modal-step.ms-future { background: #111; border-color: #1f1f1f; }
+    .ms-num {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem; font-weight: 700;
+    }
+    .modal-step.ms-done   .ms-num { background: #14532d; color: #4ade80; }
+    .modal-step.ms-active .ms-num { background: #1e3a5f; color: #60a5fa; }
+    .modal-step.ms-future .ms-num { background: #1f1f1f; color: #555; }
+    .ms-text { font-size: .82rem; line-height: 1.4; }
+    .modal-step.ms-done   .ms-text { color: #4ade80; }
+    .modal-step.ms-active .ms-text { color: #60a5fa; font-weight: 600; }
+    .modal-step.ms-future .ms-text { color: #555; }
+
+    .modal label { display: block; font-size: .72rem; font-weight: 600; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    .modal select, .modal textarea {
+      width: 100%; padding: .6rem .8rem; border-radius: 8px;
+      border: 1px solid #2a2a2a; background: #111; color: #e5e5e5;
+      font-size: .875rem; font-family: inherit; margin-bottom: 1rem; outline: none;
+    }
+    .modal select:focus, .modal textarea:focus { border-color: #7c3aed; }
+    .modal textarea { resize: vertical; min-height: 72px; }
+    .modal select option { background: #111; }
+
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .btn-cancel        { background: #1f1f1f; color: #aaa; border-color: #2a2a2a; }
+    .btn-confirm-next  { background: #0a1f0f; color: #4ade80; border-color: #14532d; }
+    .btn-confirm-abort { background: #450a0a; color: #f87171; border-color: #7f1d1d; }
+
+    .footer-note { font-size: .72rem; color: #444; margin-top: 1.25rem; text-align: right; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span>Civic</span>Flow</div>
+  <span class="tag">Government Portal — Demo</span>
+  <div class="live-dot" title="Live"></div>
+</header>
+
+<!-- Move Next Modal -->
+<div class="overlay" id="nextModal">
+  <div class="modal">
+    <div class="modal-title">▶ Move to Next Step</div>
+    <div class="modal-sub" id="nextModalSub">This will advance the complaint to the next stage.</div>
+
+    <div class="modal-stepper" id="modalStepper"></div>
+
+    <div class="next-preview" id="nextPreview">
+      <div class="next-preview-label">Next step will be set to</div>
+      <div class="next-preview-text" id="nextPreviewText">—</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('nextModal')">Cancel</button>
+      <button class="btn btn-confirm-next" onclick="confirmNext()">▶ Move to Next Step</button>
+    </div>
+  </div>
+</div>
+
+<!-- Abort Modal -->
+<div class="overlay" id="abortModal">
+  <div class="modal">
+    <div class="modal-title">✕ Abort Application</div>
+    <div class="modal-sub">This will permanently fail the complaint. The citizen will be notified.</div>
+    <label>Reason for aborting</label>
+    <select id="abortReason">
+      <option value="Missing salary slip">Missing salary slip</option>
+      <option value="Incomplete employer details">Incomplete employer details</option>
+      <option value="Duplicate complaint">Duplicate complaint</option>
+      <option value="Jurisdiction mismatch">Jurisdiction mismatch</option>
+      <option value="Insufficient evidence">Insufficient evidence</option>
+      <option value="other">Other (specify below)</option>
+    </select>
+    <label>Additional notes <span style="color:#444;font-weight:400;text-transform:none">(optional)</span></label>
+    <textarea id="abortNotes" placeholder="Any additional details..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('abortModal')">Cancel</button>
+      <button class="btn btn-confirm-abort" onclick="confirmAbort()">✕ Abort Application</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="container">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value">{{ counts.total }}</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" style="color:#60a5fa">{{ counts.received }}</div>
+      <div class="stat-label">Pending Review</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" style="color:#fbbf24">{{ counts.in_progress }}</div>
+      <div class="stat-label">In Progress</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" style="color:#4ade80">{{ counts.resolved }}</div>
+      <div class="stat-label">Resolved</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" style="color:#f87171">{{ counts.failed }}</div>
+      <div class="stat-label">Failed / Aborted</div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Ref ID</th>
+          <th>Category</th>
+          <th>Filed</th>
+          <th style="min-width:280px">Workflow Progress</th>
+          <th>Documents</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sub in submissions %}
+        <tr>
+          <!-- Ref ID -->
+          <td><span class="ref-id">{{ sub.portal_ref_id }}</span></td>
+
+          <!-- Category -->
+          <td>{{ sub.category }}</td>
+
+          <!-- Filed date -->
+          <td>
+            {% if sub.received_at %}
+              <span class="muted">{{ sub.received_at.strftime('%d %b %Y') }}</span><br>
+              <span class="muted">{{ sub.received_at.strftime('%H:%M') }} UTC</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+
+          <!-- Workflow progress -->
+          <td>
+            <!-- Status badge -->
+            {% set st = sub.status %}
+            {% if st == 'received' %}
+              <span class="badge badge-received">Received</span>
+            {% elif st == 'under_review' %}
+              <span class="badge badge-under_review">Under Review</span>
+            {% elif st == 'next_step' %}
+              <span class="badge badge-next_step">
+                {{ sub.timeline[-1].event if sub.timeline else 'In Progress' }}
+              </span>
+            {% elif st == 'failed' %}
+              <span class="badge badge-failed">Aborted</span>
+            {% elif st == 'resolved' %}
+              <span class="badge badge-resolved">Resolved</span>
+            {% else %}
+              <span class="badge">{{ st }}</span>
+            {% endif %}
+
+            <!-- Horizontal stepper -->
+            {% if sub.status not in ['failed'] %}
+            <div class="stepper" style="margin-top:10px">
+              {% for step_label in sub.workflow_steps %}
+              {% set i = loop.index0 %}
+              {% if i < sub.current_step_index %}
+                <div class="step done">
+                  <div class="step-dot">✓</div>
+                  <div class="step-label">{{ loop.index }}</div>
+                </div>
+              {% elif i == sub.current_step_index %}
+                <div class="step active">
+                  <div class="step-dot">{{ loop.index }}</div>
+                  <div class="step-label">{{ loop.index }}</div>
+                </div>
+              {% else %}
+                <div class="step">
+                  <div class="step-dot">{{ loop.index }}</div>
+                  <div class="step-label">{{ loop.index }}</div>
+                </div>
+              {% endif %}
+              {% endfor %}
+            </div>
+            <!-- Current step label -->
+            <div style="font-size:.72rem; color:#888; margin-top:6px">
+              Step {{ sub.current_step_index + 1 }}: {{ sub.workflow_steps[sub.current_step_index] }}
+            </div>
+            {% elif sub.timeline %}
+            <div style="font-size:.72rem; color:#f87171; margin-top:6px">
+              {{ sub.timeline[-1].event }}
+            </div>
+            {% endif %}
+          </td>
+
+          <!-- Documents -->
+          <td>
+            {% if sub.has_pdf %}
+              <a href="/portal/pdf/{{ sub.portal_ref_id }}" target="_blank" rel="noopener">
+                <button class="btn btn-pdf">📄 View PDF</button>
+              </a>
+            {% else %}
+              <span class="muted">No PDF</span>
+            {% endif %}
+          </td>
+
+          <!-- Actions -->
+          <td>
+            {% set done = sub.status in ['failed', 'resolved'] %}
+            <div class="action-group">
+              <button
+                class="btn btn-next"
+                onclick='openNext(
+                  "{{ sub.portal_ref_id }}",
+                  {{ sub.workflow_steps | tojson }},
+                  {{ sub.current_step_index }}
+                )'
+                {% if done %}disabled{% endif %}
+              >▶ Move Next</button>
+
+              <button
+                class="btn btn-abort"
+                onclick="openAbort('{{ sub.portal_ref_id }}')"
+                {% if done %}disabled{% endif %}
+              >✕ Abort</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="empty-row">
+          <td colspan="6" style="text-align:center; padding:4rem; color:#444">
+            No submissions yet.<br>
+            <span class="muted">Complaints filed by citizens will appear here.</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="footer-note">Auto-refreshes every 15 s &nbsp;·&nbsp; Webhook fires to backend on every action</p>
+</div>
+
+<script>
+  let _refId = null;
+
+  function openNext(refId, steps, currentIndex) {
+    _refId = refId;
+
+    // Build stepper list in modal
+    const container = document.getElementById('modalStepper');
+    container.innerHTML = '';
+    steps.forEach((label, i) => {
+      const cls = i < currentIndex ? 'ms-done' : i === currentIndex ? 'ms-active' : 'ms-future';
+      const icon = i < currentIndex ? '✓' : i + 1;
+      container.innerHTML += `
+        <div class="modal-step ${cls}">
+          <div class="ms-num">${icon}</div>
+          <div class="ms-text">${label}</div>
+        </div>`;
+    });
+
+    // Show next step preview
+    const nextIndex = currentIndex + 1;
+    const nextLabel = nextIndex < steps.length ? steps[nextIndex] : 'Case Resolved ✓';
+    document.getElementById('nextPreviewText').textContent = nextLabel;
+    document.getElementById('nextModalSub').textContent =
+      nextIndex < steps.length
+        ? `Currently on step ${currentIndex + 1} of ${steps.length}. Move to step ${nextIndex + 1}.`
+        : `This is the final step. Completing it will mark the case as Resolved.`;
+
+    document.getElementById('nextModal').classList.add('open');
+  }
+
+  function openAbort(refId) {
+    _refId = refId;
+    document.getElementById('abortReason').selectedIndex = 0;
+    document.getElementById('abortNotes').value = '';
+    document.getElementById('abortModal').classList.add('open');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    _refId = null;
+  }
+
+  async function confirmNext() {
+    await _postAction({ portal_ref_id: _refId, action: 'next_step' });
+  }
+
+  async function confirmAbort() {
+    const sel = document.getElementById('abortReason');
+    const notes = document.getElementById('abortNotes').value.trim();
+    const reason = sel.value === 'other' ? (notes || 'Other reason') : sel.value;
+    await _postAction({ portal_ref_id: _refId, action: 'abort', reason });
+  }
+
+  async function _postAction(body) {
+    try {
+      await fetch('/portal/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) { console.error('Action failed', e); }
+    location.reload();
+  }
+
+  // Close on backdrop click
+  document.querySelectorAll('.overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.overlay.open').forEach(el => el.classList.remove('open'));
+      _refId = null;
+    }
+  });
+
+  // Auto-refresh
+  setTimeout(() => location.reload(), 15000);
+</script>
+</body>
+</html>
