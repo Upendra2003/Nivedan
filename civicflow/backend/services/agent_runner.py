@@ -25,18 +25,137 @@ LANG_NAMES = {
     "gu": "Gujarati (ગુજરાતી)", "pa": "Punjabi (ਪੰਜਾਬੀ)",
 }
 
-# ── Required fields for salary complaint ─────────────────────────────────────
+# ── Per-subcategory config ────────────────────────────────────────────────────
+# Each entry: title, authority, issue_description, fields [(key, label)], form_name
 
-FIELDS = [
-    ("complainant_name",      "your full name"),
-    ("employer_name",         "your employer / company name"),
-    ("employer_address",      "your employer's full address"),
-    ("employment_start_date", "date you started working"),
-    ("last_paid_date",        "last date salary was paid"),
-    ("months_pending",        "number of months salary is unpaid"),
-    ("amount_pending",        "total unpaid amount in rupees"),
-    ("attempts_made",         "steps you already took to resolve this"),
-]
+SUBCATEGORY_CONFIG = {
+    "salary_not_paid": {
+        "title":       "Salary Non-Payment",
+        "authority":   "Labour Commissioner",
+        "issue":       "salary not being paid",
+        "form_name":   "salary_non_payment",
+        "fields": [
+            ("complainant_name",      "your full name"),
+            ("employer_name",         "your employer / company name"),
+            ("employer_address",      "your employer's full address"),
+            ("employment_start_date", "date you started working"),
+            ("last_paid_date",        "last date salary was paid"),
+            ("months_pending",        "number of months salary is unpaid"),
+            ("amount_pending",        "total unpaid amount in rupees"),
+            ("attempts_made",         "steps you already took to resolve this"),
+        ],
+    },
+    "wrongful_termination": {
+        "title":       "Wrongful Termination",
+        "authority":   "Labour Commissioner",
+        "issue":       "wrongful or illegal termination from job",
+        "form_name":   "wrongful_termination",
+        "fields": [
+            ("complainant_name",   "your full name"),
+            ("employer_name",      "your employer / company name"),
+            ("employer_address",   "your employer's full address"),
+            ("termination_date",   "date you were terminated"),
+            ("reason_given",       "reason the employer gave for termination"),
+            ("notice_period",      "whether you were given any notice period"),
+            ("attempts_made",      "steps you already took to resolve this"),
+        ],
+    },
+    "workplace_harassment": {
+        "title":       "Workplace Harassment",
+        "authority":   "Labour Commissioner / Internal Complaints Committee",
+        "issue":       "workplace harassment",
+        "form_name":   "workplace_harassment",
+        "fields": [
+            ("complainant_name",   "your full name"),
+            ("employer_name",      "your employer / company name"),
+            ("employer_address",   "your employer's full address"),
+            ("harasser_name",      "name or designation of the person involved"),
+            ("incident_date",      "date the incident occurred"),
+            ("incident_details",   "description of what happened"),
+            ("witnesses",          "any witnesses to the incident"),
+            ("attempts_made",      "any steps taken so far to address this"),
+        ],
+    },
+    "fir_not_registered": {
+        "title":       "FIR Not Registered",
+        "authority":   "Superintendent of Police",
+        "issue":       "police refusing to register an FIR",
+        "form_name":   "fir_not_registered",
+        "fields": [
+            ("complainant_name",      "your full name"),
+            ("police_station",        "name of the police station you approached"),
+            ("officer_name",          "name of the officer who refused (if known)"),
+            ("incident_date",         "date the original incident occurred"),
+            ("incident_description",  "brief description of the incident"),
+            ("visit_date",            "date you went to the police station"),
+            ("attempts_made",         "how many times you tried to file the FIR"),
+        ],
+    },
+    "police_misconduct": {
+        "title":       "Police Misconduct",
+        "authority":   "Superintendent of Police / State Human Rights Commission",
+        "issue":       "police misconduct or abuse of power",
+        "form_name":   "police_misconduct",
+        "fields": [
+            ("complainant_name",     "your full name"),
+            ("police_station",       "police station involved"),
+            ("officer_name",         "name or badge number of the officer"),
+            ("incident_date",        "date of the incident"),
+            ("incident_description", "description of what happened"),
+            ("witnesses",            "any witnesses"),
+            ("attempts_made",        "any complaints already filed"),
+        ],
+    },
+    "defective_product": {
+        "title":       "Defective Product",
+        "authority":   "Consumer Disputes Redressal Forum",
+        "issue":       "receiving a defective or substandard product",
+        "form_name":   "defective_product",
+        "fields": [
+            ("complainant_name",   "your full name"),
+            ("seller_name",        "seller or company name"),
+            ("seller_address",     "seller's address"),
+            ("product_name",       "name of the product"),
+            ("purchase_date",      "date of purchase"),
+            ("purchase_amount",    "amount paid in rupees"),
+            ("defect_description", "description of the defect"),
+            ("attempts_made",      "steps taken to get a refund or replacement"),
+        ],
+    },
+    "online_scam": {
+        "title":       "Online Scam / Cyber Fraud",
+        "authority":   "Cyber Crime Cell",
+        "issue":       "online fraud or cyber scam",
+        "form_name":   "online_scam",
+        "fields": [
+            ("complainant_name",   "your full name"),
+            ("incident_date",      "date the scam occurred"),
+            ("scam_description",   "how the scam happened"),
+            ("amount_lost",        "amount of money lost in rupees"),
+            ("scammer_details",    "any details about the scammer (number, account, URL)"),
+            ("transaction_id",     "transaction ID or reference number if available"),
+            ("attempts_made",      "steps already taken, e.g. bank complaint, police"),
+        ],
+    },
+}
+
+# Generic fallback for any subcategory not in config
+DEFAULT_CONFIG = {
+    "title":     "Complaint",
+    "authority": "Relevant Authority",
+    "issue":     "this issue",
+    "form_name": "generic",
+    "fields": [
+        ("complainant_name",     "your full name"),
+        ("incident_date",        "date of the incident"),
+        ("incident_description", "description of the issue"),
+        ("location",             "location where this occurred"),
+        ("attempts_made",        "steps already taken to resolve this"),
+    ],
+}
+
+def _config(subcategory: str) -> dict:
+    return SUBCATEGORY_CONFIG.get(subcategory, DEFAULT_CONFIG)
 
 # ── Agent states ──────────────────────────────────────────────────────────────
 # CHAT            → understand problem, free conversation
@@ -46,8 +165,8 @@ FIELDS = [
 # SUBMITTED       → done
 
 
-def _missing(form_data: dict) -> list:
-    return [f for f in FIELDS if not form_data.get(f[0])]
+def _missing(form_data: dict, fields: list) -> list:
+    return [f for f in fields if not form_data.get(f[0])]
 
 
 def _lang(user: dict) -> str:
@@ -55,63 +174,51 @@ def _lang(user: dict) -> str:
     return LANG_NAMES.get(code, "English")
 
 
-def _system_prompt(state: str, form_data: dict, user_name: str, language: str) -> str:
-    missing = _missing(form_data)
-    collected_str = (
-        "\n".join(f"  {k}: {v}" for k, v in form_data.items())
-        if form_data else "  (none yet)"
-    )
-    missing_str = ", ".join(f[0] for f in missing) if missing else "none — all collected"
+def _system_prompt(state: str, form_data: dict, user_name: str, language: str, cfg: dict) -> str:
+    fields        = cfg["fields"]
+    missing       = _missing(form_data, fields)
+    collected_str = "\n".join(f"  {k}: {v}" for k, v in form_data.items()) or "  (none yet)"
+    missing_str   = ", ".join(f[0] for f in missing) if missing else "none — all collected"
+    next_field    = f"Ask for: {missing[0][1]} (key: {missing[0][0]})" if missing else "All collected — ask for confirmation"
 
     return f"""You are CivicFlow, a compassionate AI legal assistant helping Indian citizens file government complaints.
 
 CRITICAL: Respond ONLY in {language}. Do not use any other language.
 
+Complaint type: {cfg["title"]}
+Filing authority: {cfg["authority"]}
 User's name: {user_name}
 Current state: {state}
-Collected info: \n{collected_str}
+Collected info:
+{collected_str}
 Still needed: {missing_str}
+Next task: {next_field}
 
-## Your behavior by state:
+## State behavior:
 
-### CHAT state
-- Understand the user's salary problem through warm, natural conversation
-- Ask clarifying questions naturally (don't ask all at once)
-- When you have enough context OR user says "file complaint" / "help me file" / similar intent:
-  → output ACTION: fetch_form
+### CHAT — understand the user's {cfg["issue"]} through warm conversation
+- When ready to file OR user says "file"/"help me file": ACTION: fetch_form
 
-### SHOW_BLANK_FORM state
-- You just showed the user the blank government form
-- Explain what information is needed to fill it
-- When user says "fill it" / "yes fill" / "haan baro" / similar:
-  → output ACTION: collect_fields
+### SHOW_BLANK_FORM — blank form was shown
+- When user says "fill it"/"yes"/"proceed": ACTION: collect_fields
 
-### COLLECT_FIELDS state
-- Collect missing fields one at a time, naturally (not robotically)
-- Pre-fill complainant_name as "{user_name}" if not yet set
-- Extract any values from user's message and list them in EXTRACTED
-- When ALL fields collected:
-  → output ACTION: fill_form
+### COLLECT_FIELDS — collect fields one by one
+- Extract values from user messages via EXTRACTED
+- When ALL fields done: ACTION: fill_form
 
-### PREVIEW state
-- You just showed the user the filled complaint PDF
-- Ask them to review and confirm: "Does everything look correct? Shall I submit this?"
-- If user confirms (yes/submit/haan):
-  → output ACTION: submit
-- If user wants changes:
-  → output ACTION: collect_fields
+### PREVIEW — filled PDF shown, awaiting confirmation
+- User says yes/confirm/submit: ACTION: submit
+- User wants changes: ACTION: collect_fields
 
-## Output format (ALWAYS end with these two lines, no matter what):
+## Output format (end EVERY reply with exactly these two lines):
 EXTRACTED: {{"field_key": "value"}}
 ACTION: none|fetch_form|collect_fields|fill_form|submit
 
 ## Rules:
-- **ONE question per reply. Never ask two questions in the same message. Period.**
-- Keep replies short — 1 acknowledgement sentence + 1 question only
-- Be warm and patient — users are distressed, give them space
-- Never mention "EXTRACTED" or "ACTION" in your visible reply
-- Use ACTION: none for most conversational turns
-- Do NOT list multiple things to provide. Ask for ONE thing, wait for answer, then ask next."""
+- **ONE question per reply. Never ask two things at once. Period.**
+- 1 warm acknowledgement + 1 question only
+- Never show EXTRACTED or ACTION text to the user
+- Do NOT list what you need. Ask for ONE thing, wait, then ask the next."""
 
 
 def _strip_think(text: str) -> str:
@@ -155,10 +262,11 @@ def _parse_tail(llm_text: str) -> tuple[dict, str]:
     return extracted, action, clean
 
 
-def _fetch_blank_form_b64() -> str | None:
-    """Fetch blank salary form PDF from mock portal, return base64."""
+def _fetch_blank_form_b64(cfg: dict) -> str | None:
+    """Fetch blank form PDF from mock portal. Falls back to generating a generic blank."""
     try:
         portal_url = os.getenv("MOCK_PORTAL_URL", "http://localhost:5001")
+        # Try the salary_complaint blank form endpoint (only one the portal serves)
         resp = requests.get(f"{portal_url}/portal/forms/salary_complaint", timeout=5)
         if resp.status_code == 200:
             return base64.b64encode(resp.content).decode()
@@ -167,17 +275,17 @@ def _fetch_blank_form_b64() -> str | None:
     return None
 
 
-def _submit_to_portal(complaint_id: str, user: dict, form_data: dict) -> dict:
-    pdf_data = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
-    pdf_base64 = generate_pdf_b64("salary_non_payment", pdf_data)
+def _submit_to_portal(complaint_id: str, user: dict, form_data: dict, cfg: dict, category: str) -> dict:
+    pdf_data   = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+    pdf_base64 = generate_pdf_b64(cfg["form_name"], pdf_data)
     resp = requests.post(
         f"{MOCK_PORTAL_URL}/portal/submit",
         json={
             "complaint_id": complaint_id,
-            "user_id": str(user["_id"]),
-            "category": "Labor Issues",
-            "form_data": form_data,
-            "pdf_base64": pdf_base64,
+            "user_id":      str(user["_id"]),
+            "category":     category,
+            "form_data":    form_data,
+            "pdf_base64":   pdf_base64,
         },
         timeout=10,
     )
@@ -202,6 +310,9 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     history       = list(complaint.get("agent_history") or [])
     language      = _lang(user)
     user_name     = user.get("name", "")
+    subcategory   = complaint.get("subcategory", "")
+    category      = complaint.get("category", "")
+    cfg           = _config(subcategory)
 
     # ── Auto-prefill user's own name ──────────────────────────────────────────
     if user_name and not form_data.get("complainant_name"):
@@ -209,19 +320,24 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
 
     # ── CHAT + empty message = initial greeting (no LLM call needed) ─────────
     if state == "CHAT" and not user_message:
-        lang_code = user.get("preferred_language", "en") or "en"
-        greet_map = {
-            "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी वेतन न मिलने की शिकायत दर्ज करने में मदद करूँगा। कृपया मुझे बताएं — आपके साथ क्या हुआ?",
-            "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் சம்பள புகாரில் உதவுவேன். என்ன நடந்தது?",
-            "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ జీతం సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
-            "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ ವೇತನ ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
-            "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI ആണ്. ശമ്പള പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
-        }
-        reply = greet_map.get(lang_code, (
+        lang_code  = user.get("preferred_language", "en") or "en"
+        title      = cfg["title"]
+        authority  = cfg["authority"]
+        issue      = cfg["issue"]
+
+        greet_en = (
             f"Hello {user_name}! I'm CivicFlow AI, your legal assistant. "
-            "I'll help you file a Salary Non-Payment complaint with the Labour Commissioner. "
-            "Tell me what happened — when did your employer stop paying your salary?"
-        ))
+            f"I'll help you file a {title} complaint with the {authority}. "
+            f"Tell me what happened — can you describe the situation?"
+        )
+        greet_map = {
+            "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
+            "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
+            "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
+            "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
+            "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
+        }
+        reply = greet_map.get(lang_code, greet_en)
         db.complaints.update_one(
             {"_id": cid},
             {"$set": {
@@ -250,7 +366,7 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     thinking_steps = ["💭 Reading your message...", f"🌐 Sarvam AI processing in {language}..."]
 
     # ── Call LLM ──────────────────────────────────────────────────────────────
-    system = _system_prompt(state, form_data, user_name, language)
+    system = _system_prompt(state, form_data, user_name, language, cfg)
     if user_message:
         history.append({"role": "user", "content": user_message})
 
@@ -271,9 +387,10 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     extracted, llm_action, reply_text = _parse_tail(llm_reply)
     history.append({"role": "assistant", "content": llm_reply})
 
-    # Apply extracted fields
+    # Apply extracted fields (only keys valid for this subcategory)
+    valid_keys = {f[0] for f in cfg["fields"]}
     for key, val in extracted.items():
-        if key in {f[0] for f in FIELDS} and val:
+        if key in valid_keys and val:
             form_data[key] = str(val)
             thinking_steps.append(f"📝 Noted: {key.replace('_', ' ')} = {val}")
 
@@ -283,54 +400,52 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     next_state  = state
 
     if llm_action == "fetch_form":
-        thinking_steps += ["📋 Fetching blank form from Labour Portal...", "📄 Form ready for review"]
-        blank_b64 = _fetch_blank_form_b64()
+        thinking_steps += [f"📋 Fetching blank {cfg['title']} form...", "📄 Form ready for review"]
+        blank_b64   = _fetch_blank_form_b64(cfg)
         action      = "show_pdf"
         action_data = {
-            "filename":   "Salary_Complaint_Form_Blank.pdf",
+            "filename":   f"{cfg['title'].replace(' ', '_')}_Form_Blank.pdf",
             "pdf_base64": blank_b64,
             "label":      "blank_form",
         }
         next_state = "SHOW_BLANK_FORM"
         if not reply_text:
-            reply_text = "Here is the official Salary Non-Payment complaint form. I can fill this for you — just say 'fill it' when you're ready."
+            reply_text = f"Here is the official {cfg['title']} complaint form. I can fill this for you — just say 'fill it' when you're ready."
 
     elif llm_action == "collect_fields":
         next_state = "COLLECT_FIELDS"
         thinking_steps.append("📋 Starting field collection...")
 
     elif llm_action == "fill_form":
-        missing = _missing(form_data)
+        missing = _missing(form_data, cfg["fields"])
         if missing:
-            # Still missing fields — stay in COLLECT_FIELDS
             next_state = "COLLECT_FIELDS"
-            field_label = missing[0][1]
             thinking_steps.append(f"⚠️ Still need: {missing[0][0]}")
         else:
             thinking_steps += ["✍️ Filling all complaint fields...", "🖨️ Generating PDF document...", "✅ PDF ready!"]
             try:
                 pdf_data   = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
-                pdf_base64 = generate_pdf_b64("salary_non_payment", pdf_data)
+                pdf_base64 = generate_pdf_b64(cfg["form_name"], pdf_data)
                 action      = "show_pdf"
                 action_data = {
-                    "filename":   "Your_Salary_Complaint.pdf",
+                    "filename":   f"Your_{cfg['title'].replace(' ', '_')}_Complaint.pdf",
                     "pdf_base64": pdf_base64,
                     "label":      "filled_form",
                 }
                 next_state = "PREVIEW"
                 if not reply_text:
-                    reply_text = "Your complaint form is ready! Please review the PDF. If everything looks correct, say 'Yes, submit it.'"
+                    reply_text = f"Your {cfg['title']} complaint form is ready! Please review the PDF. If everything looks correct, say 'Yes, submit it.'"
             except Exception as e:
                 reply_text = f"Error generating form: {e}"
 
     elif llm_action == "submit":
         thinking_steps += [
-            "📤 Uploading to Labour Commission Portal...",
+            f"📤 Uploading to {cfg['authority']}...",
             "⏳ Awaiting portal acknowledgement...",
             "✅ Complaint filed!",
         ]
         try:
-            portal_res    = _submit_to_portal(complaint_id, user, form_data)
+            portal_res    = _submit_to_portal(complaint_id, user, form_data, cfg, category)
             portal_ref_id = portal_res.get("portal_ref_id", "")
             now           = datetime.now(timezone.utc)
             db.complaints.update_one(

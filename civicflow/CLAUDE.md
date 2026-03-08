@@ -150,20 +150,27 @@ services/sarvam.py          chat_completion(messages, system_prompt) → str
 services/agent_runner.py    Phase 6 AI agent state machine
                             States: CHAT → SHOW_BLANK_FORM → COLLECT_FIELDS → PREVIEW → SUBMITTED
                             run_agent(complaint_id, user_message, user) → dict
+                            - Loads subcategory from complaint doc → looks up SUBCATEGORY_CONFIG
                             - Empty message + CHAT state → hardcoded greeting in user's language
+                              (uses cfg["title"] + cfg["authority"] — fully dynamic per subcategory)
                             - CHAT: natural conversation, LLM decides when to ACTION: fetch_form
                             - SHOW_BLANK_FORM: shows blank PDF, waits for "fill it"
                             - COLLECT_FIELDS: LLM extracts fields via EXTRACTED: {...} at end
-                            - All 8 fields collected → generate_pdf_b64 → ACTION: fill_form
+                            - All fields collected → generate_pdf_b64(cfg["form_name"]) → ACTION: fill_form
                             - PREVIEW: shows filled PDF, waits for confirm → ACTION: submit
                             - SUBMITTED: submits to portal, updates DB, returns status_update
                             LLM output format (always ends with):
                               EXTRACTED: {"field_key": "value"}
                               ACTION: none|fetch_form|collect_fields|fill_form|submit
-                            Salary fields: complainant_name, employer_name, employer_address,
-                              employment_start_date, last_paid_date, months_pending,
-                              amount_pending, attempts_made
+                            _strip_think(): removes <think>...</think> AND unclosed <think> tags
+                              (Sarvam-m emits chain-of-thought — must strip before sending to client)
                             Auto-prefills complainant_name from user.name
+
+                            SUBCATEGORY_CONFIG keys (each has title, authority, issue, form_name, fields):
+                              salary_not_paid, wrongful_termination, workplace_harassment,
+                              fir_not_registered, police_misconduct, defective_product, online_scam
+                            DEFAULT_CONFIG → generic fallback for any unknown subcategory
+                            _config(subcategory) → returns matching config or DEFAULT_CONFIG
 
 services/form_handler.py    FIELD_DEFINITIONS for old agent chat (Phase 1b)
                             get_fields, next_missing_field, build_summary, submit_to_portal
@@ -431,7 +438,7 @@ CHAT            Natural conversation in user's language. LLM outputs ACTION: fet
 SHOW_BLANK_FORM Blank PDF from GET /portal/forms/salary_complaint shown in chat.
                 User says "fill it" → LLM outputs ACTION: collect_fields
 COLLECT_FIELDS  LLM collects fields via EXTRACTED: {...} pattern. Auto-fills complainant_name.
-                When all 8 fields present → Python generates PDF → ACTION: fill_form
+                When all fields present → Python generates PDF → ACTION: fill_form
 PREVIEW         Filled PDF shown in chat. User confirms → LLM outputs ACTION: submit
 SUBMITTED       Python calls portal, updates DB, returns action:"status_update"
 ```
@@ -443,7 +450,31 @@ ACTION: none|fetch_form|collect_fields|fill_form|submit
 ```
 
 Language: `user.preferred_language` → LANG_NAMES dict → system prompt says "Respond ONLY in {language}".
-Initial greeting is hardcoded (no LLM call) for en/hi/ta/te/kn/ml.
+Initial greeting is hardcoded (no LLM call) for en/hi/ta/te/kn/ml — uses cfg["title"] + cfg["authority"].
+
+### Dynamic subcategory config (SUBCATEGORY_CONFIG in agent_runner.py)
+Each subcategory has: title, authority, issue, form_name, fields list.
+Greeting, system prompt, field collection, PDF filename, portal upload authority
+are all driven by this config — adding a new complaint type only requires a new entry.
+
+Supported subcategories:
+| subcategory          | title                  | authority                          |
+|----------------------|------------------------|------------------------------------|
+| salary_not_paid      | Salary Non-Payment     | Labour Commissioner                |
+| wrongful_termination | Wrongful Termination   | Labour Commissioner                |
+| workplace_harassment | Workplace Harassment   | Labour Commissioner / ICC          |
+| fir_not_registered   | FIR Not Registered     | Superintendent of Police           |
+| police_misconduct    | Police Misconduct      | SP / State Human Rights Commission |
+| defective_product    | Defective Product      | Consumer Disputes Redressal Forum  |
+| online_scam          | Online Scam/Cyber Fraud| Cyber Crime Cell                   |
+| (any other)          | Complaint (generic)    | Relevant Authority                 |
+
+### Sarvam think-tag stripping
+sarvam-m emits `<think>...</think>` chain-of-thought. `_strip_think()` handles:
+- Closed tags → take text after last `</think>`
+- Unclosed `<think>` → strip the tag, keep remaining text
+Always strip BEFORE parsing EXTRACTED/ACTION and before returning reply to client.
+Also pass `reasoning_effort=None` in SDK call to suppress CoT at model level.
 
 ---
 
@@ -512,3 +543,8 @@ Need `expo-dev-client` build + `react-native-pdf` library.
 | Android status bar overlap | `edgeToEdgeEnabled: true` + wrong SafeAreaView import | SafeAreaProvider in _layout.tsx + `react-native-safe-area-context` SafeAreaView everywhere |
 | Keyboard covers input on Android | `behavior={iOS-only}` | `behavior="padding"` on both platforms + `useSafeAreaInsets().bottom` |
 | "complaint_id is required" on chat start | `/complaints/create` returns `_id` not `complaint_id` | Read `doc._id` not `doc.complaint_id` |
+| Sarvam "First message must be from user" | Initial greeting stored as `assistant` in history; Sarvam rejects non-user first message | Don't store greeting in agent_history; strip leading assistant msgs before every LLM call |
+| `<think>` tags showing in chat UI | sarvam-m emits unclosed `<think>` blocks without `</think>` — regex `<think>.*?</think>` never matched | `_strip_think()`: if `</think>` present take text after it; else strip all `<think>` tags |
+| `.env` key loaded with quotes (`"sk_..."`) | Key pasted with surrounding quotes in `.env.example`, copied as-is | Remove quotes — dotenv value should be bare: `SARVAM_API_KEY=sk_...` |
+| `.env` file missing | Only `.env.example` existed; `load_dotenv()` reads `.env` not `.env.example` | Copy: `cp .env.example .env` |
+| All subcategories show salary greeting | Greeting and fields hardcoded for salary_not_paid only | Added `SUBCATEGORY_CONFIG` dict; agent loads `subcategory` from complaint doc and uses matching config |
