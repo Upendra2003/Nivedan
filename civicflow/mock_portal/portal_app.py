@@ -84,10 +84,16 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+
+
 def _fire_webhook(payload: dict) -> None:
     """POST status update to main backend. Never raises."""
     try:
-        requests.post(f"{BACKEND_URL}/webhooks/portal", json=payload, timeout=3)
+        headers = {}
+        if WEBHOOK_SECRET:
+            headers["X-Webhook-Secret"] = WEBHOOK_SECRET
+        requests.post(f"{BACKEND_URL}/webhooks/portal", json=payload, headers=headers, timeout=3)
     except Exception:
         pass
 

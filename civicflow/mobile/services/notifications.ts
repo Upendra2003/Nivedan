@@ -90,10 +90,11 @@ export function addForegroundListener(
 ): () => void {
   if (IS_EXPO_GO || Platform.OS === "web") return () => {};
 
-  let removeListener: (() => void) | null = null;
+  let cancelled = false;
+  let removeFn: (() => void) | null = null;
 
   loadNotifications().then((Notifications) => {
-    if (!Notifications) return;
+    if (cancelled || !Notifications) return;
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const { title, body, data } = notification.request.content;
       callback({
@@ -102,11 +103,13 @@ export function addForegroundListener(
         data: (data ?? {}) as Record<string, any>,
       });
     });
-    removeListener = () => sub.remove();
+    removeFn = () => sub.remove();
   });
 
-  // Return a stable cleanup that delegates to the async-resolved handler
-  return () => removeListener?.();
+  return () => {
+    cancelled = true;
+    removeFn?.();
+  };
 }
 
 /**
@@ -119,16 +122,20 @@ export function addResponseListener(
 ): () => void {
   if (IS_EXPO_GO || Platform.OS === "web") return () => {};
 
-  let removeListener: (() => void) | null = null;
+  let cancelled = false;
+  let removeFn: (() => void) | null = null;
 
   loadNotifications().then((Notifications) => {
-    if (!Notifications) return;
+    if (cancelled || !Notifications) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = (response.notification.request.content.data ?? {}) as Record<string, any>;
       callback(data);
     });
-    removeListener = () => sub.remove();
+    removeFn = () => sub.remove();
   });
 
-  return () => removeListener?.();
+  return () => {
+    cancelled = true;
+    removeFn?.();
+  };
 }

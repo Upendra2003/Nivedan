@@ -1,3 +1,5 @@
+import hmac
+import os
 from datetime import datetime, timezone
 
 import requests
@@ -7,6 +9,9 @@ from flask import Blueprint, jsonify, request
 from db import db
 
 webhooks_bp = Blueprint("webhooks", __name__)
+
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+VALID_STATUSES = {"pending", "filed", "acknowledged", "under_review", "next_step", "resolved", "failed"}
 
 
 def _now() -> datetime:
@@ -21,8 +26,8 @@ def _send_expo_push(token: str, title: str, body: str, data: dict | None = None)
             json={"to": token, "title": title, "body": body, "data": data or {}, "sound": "default"},
             timeout=5,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[push] delivery failed for token {token[:20]}...: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +38,12 @@ def _send_expo_push(token: str, title: str, body: str, data: dict | None = None)
 
 @webhooks_bp.route("/portal", methods=["POST"])
 def portal_webhook():
+    # C-1: Verify shared secret if one is configured
+    if WEBHOOK_SECRET:
+        incoming = request.headers.get("X-Webhook-Secret", "")
+        if not hmac.compare_digest(incoming, WEBHOOK_SECRET):
+            return jsonify({"error": "Forbidden"}), 403
+
     data = request.get_json(silent=True) or {}
 
     complaint_id = data.get("complaint_id")
@@ -43,6 +54,10 @@ def portal_webhook():
 
     if not complaint_id or not new_status:
         return jsonify({"error": "complaint_id and status are required"}), 400
+
+    # C-2: Validate status against allowlist
+    if new_status not in VALID_STATUSES:
+        return jsonify({"error": f"invalid status '{new_status}'"}), 400
 
     try:
         oid = ObjectId(complaint_id)

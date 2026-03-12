@@ -10,6 +10,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import { api } from "../services/api";
 import { useAuth } from "./AuthContext";
 
@@ -41,7 +42,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       const data = await api.authedGet<AppNotification[]>("/notifications/mine?all=1");
       setNotifications(data);
-    } catch {}
+    } catch (e) {
+      if (__DEV__) console.warn("[notifications] refresh failed:", e);
+    }
   }, [user]);
 
   // Refresh on mount + whenever user changes
@@ -49,11 +52,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     refreshNotifications();
   }, [refreshNotifications]);
 
-  // Poll every 8s — fast enough to feel real-time in Expo Go where push isn't available
+  // Poll every 8s, but only while app is in the foreground.
+  // Also refresh immediately when the app comes back from background.
   useEffect(() => {
     if (!user) return;
-    const id = setInterval(refreshNotifications, 8_000);
-    return () => clearInterval(id);
+
+    const id = setInterval(() => {
+      if (AppState.currentState === "active") refreshNotifications();
+    }, 8_000);
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshNotifications();
+    });
+
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [user, refreshNotifications]);
 
   const markRead = useCallback(async (id: string) => {

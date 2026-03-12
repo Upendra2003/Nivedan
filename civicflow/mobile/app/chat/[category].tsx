@@ -17,19 +17,16 @@ import { sendAgentMessage, AgentResponse } from "../../services/agent";
 import { findSubcategory } from "../../constants/categories";
 import { useTheme } from "../../constants/theme";
 import ThinkingStrip from "../../components/ThinkingStrip";
-import PdfCard from "../../components/PdfCard";
 import PdfViewer from "../../components/PdfViewer";
+import ChatMessageRow, { Message } from "../../components/ChatMessageRow";
+import { useComplaintPolling } from "../../hooks/useComplaintPolling";
 import { setPdfViewerData } from "../../utils/pdfStore";
 import { useNotifications } from "../../context/NotificationContext";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type Message =
-  | { id: string; type: "user"; text: string }
-  | { id: string; type: "agent"; text: string }
-  | { id: string; type: "action_buttons"; buttons: string[] }
-  | { id: string; type: "status_update"; status: string; label: string }
-  | { id: string; type: "pdf_card"; filename: string; pdfBase64?: string; label?: string };
 
 type Stage = "loading" | "chatting" | "confirming" | "submitted";
 
@@ -46,39 +43,41 @@ export default function ChatScreen() {
   const parentCategory = resolved?.category ?? null;
   const subcategory    = resolved?.subcategory ?? null;
 
-  const [stage, setStage]                     = useState<Stage>("loading");
-  const [messages, setMessages]               = useState<Message[]>([]);
-  const [input, setInput]                     = useState("");
-  const [complaintId, setComplaintId]         = useState<string | null>(null);
-  const [thinking, setThinking]               = useState(false);
-  const [thinkingSteps, setThinkingSteps]     = useState<string[] | undefined>();
-  const [pdfViewer, setPdfViewer]             = useState<{
+  const [stage, setStage]                 = useState<Stage>("loading");
+  const [messages, setMessages]           = useState<Message[]>([]);
+  const [input, setInput]                 = useState("");
+  const [complaintId, setComplaintId]     = useState<string | null>(null);
+  const [thinking, setThinking]           = useState(false);
+  const [thinkingSteps, setThinkingSteps] = useState<string[] | undefined>();
+  const [uploading, setUploading]         = useState(false); // file upload in progress (not AI)
+  const [pdfViewer, setPdfViewer]         = useState<{
     visible: boolean; filename: string; base64?: string;
   }>({ visible: false, filename: "" });
-  const listRef       = useRef<FlatList>(null);
-  // Always-current ref to handleSend — avoids stale closure in pdfStore callbacks
-  const handleSendRef = useRef<((overrideText?: string) => Promise<void>) | undefined>(undefined);
-  // Track last known complaint status for polling fallback
-  const lastStatusRef = useRef<string | null>(null);
+
+  const listRef          = useRef<FlatList>(null);
+  const handleSendRef    = useRef<((text?: string) => Promise<void>) | undefined>(undefined);
+  const applyResponseRef = useRef<((res: AgentResponse) => void) | undefined>(undefined);
+  const lastStatusRef    = useRef<string | null>(null);
 
   const pushMsg = useCallback((msg: Message) => {
     setMessages((prev) => [...prev, msg]);
-    // onContentSizeChange on FlatList handles scroll-to-end automatically
   }, []);
+
+  const pushStatusCard = useCallback((status: string, label: string) => {
+    pushMsg({ id: uid(), type: "status_update", status, label });
+  }, [pushMsg]);
 
   // ── Apply agent response to UI ────────────────────────────────────────────
 
   const applyResponse = useCallback((res: AgentResponse) => {
-    // Store thinking steps so ThinkingStrip can display them after API completes
     if (res.thinking_steps?.length) setThinkingSteps([...res.thinking_steps]);
-
     if (res.reply) pushMsg({ id: uid(), type: "agent", text: res.reply });
 
     switch (res.action) {
       case "show_pdf": {
-        const filename  = res.action_data?.filename ?? "complaint.pdf";
+        const filename   = res.action_data?.filename ?? "complaint.pdf";
         const pdf_base64 = res.action_data?.pdf_base64;
-        const label     = res.action_data?.label;
+        const label      = res.action_data?.label;
         pushMsg({ id: uid(), type: "pdf_card", filename, pdfBase64: pdf_base64, label });
         setStage("confirming");
         break;
@@ -86,6 +85,16 @@ export default function ChatScreen() {
       case "show_buttons": {
         const buttons = res.action_data?.buttons ?? ["Yes", "No"];
         pushMsg({ id: uid(), type: "action_buttons", buttons });
+        setStage("confirming");
+        break;
+      }
+      case "request_signature": {
+        pushMsg({ id: uid(), type: "signature_request" });
+        setStage("confirming");
+        break;
+      }
+      case "request_documents": {
+        pushMsg({ id: uid(), type: "document_upload_request" });
         setStage("confirming");
         break;
       }
@@ -100,7 +109,7 @@ export default function ChatScreen() {
       default:
         if (stage !== "submitted") setStage("chatting");
     }
-  }, [pushMsg, stage]);
+  }, [pushMsg, stage, refreshNotifications]);
 
   // ── Init: create complaint + get greeting ────────────────────────────────
 
@@ -111,7 +120,6 @@ export default function ChatScreen() {
     (async () => {
       setThinking(true);
       try {
-        // Create complaint (returns full doc with _id field)
         const doc = await api.authedPost<{ _id: string }>(
           "/complaints/create",
           { category: parentCategory.label, subcategory: subcategory.id, form_data: {} }
@@ -120,9 +128,8 @@ export default function ChatScreen() {
 
         const cid = doc._id;
         setComplaintId(cid);
-        lastStatusRef.current = "pending"; // initial status
+        lastStatusRef.current = "pending";
 
-        // Get greeting from agent (empty message = agent starts)
         const greet = await sendAgentMessage(cid, "");
         if (cancelled) return;
         applyResponse(greet);
@@ -147,10 +154,10 @@ export default function ChatScreen() {
     const text = (overrideText ?? input).trim();
     if (!text || !complaintId || stage === "loading" || stage === "submitted") return;
 
-    Keyboard.dismiss();           // snap input bar back to bottom
+    Keyboard.dismiss();
     pushMsg({ id: uid(), type: "user", text });
     setInput("");
-    setThinkingSteps(undefined); // clear previous steps
+    setThinkingSteps(undefined);
     setThinking(true);
 
     try {
@@ -165,61 +172,143 @@ export default function ChatScreen() {
     }
   };
 
-  // Update ref on every render so pdfStore callbacks always invoke the latest closure
-  handleSendRef.current = handleSend;
+  // ── Signature upload ──────────────────────────────────────────────────────
 
-  // ── Poll for rejection when stage = "submitted" ──────────────────────────
-  useEffect(() => {
-    if (stage !== "submitted" || !complaintId) return;
-    const interval = setInterval(async () => {
-      try {
-        const c = await api.authedGet<{ status: string; agent_state: string }>(
-          `/complaints/${complaintId}`
-        );
-        if (c.status === "failed" || c.agent_state === "REJECTED") {
-          clearInterval(interval);
-          setStage("chatting");
-          setThinkingSteps(undefined);
-          setThinking(true);
-          try {
-            const res = await sendAgentMessage(complaintId, "");
-            applyResponse(res);
-          } finally {
-            setThinking(false);
-          }
+  // Max base64 size we'll accept (~600 KB decoded = ~800 KB base64)
+  const MAX_B64 = 800_000;
+
+  const handleSignatureUpload = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      pushMsg({ id: uid(), type: "agent", text: "Please allow photo access to upload your signature." });
+      return;
+    }
+    // Open picker BEFORE setting thinking — picker is not "loading"
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.5,
+      allowsEditing: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    const b64 = result.assets[0].base64!;
+    if (b64.length > MAX_B64) {
+      pushMsg({ id: uid(), type: "agent", text: "Signature image is too large. Please crop or use a smaller photo." });
+      return;
+    }
+    setUploading(true);
+    try {
+      await api.authedPost(`/complaints/${complaintId}/upload-doc`, {
+        type: "signature",
+        file_base64: b64,
+        filename: "signature.jpg",
+        mime_type: result.assets[0].mimeType || "image/jpeg",
+      });
+      pushMsg({ id: uid(), type: "uploaded_file_card", filename: "signature.jpg", isSignature: true });
+      setUploading(false);
+      await handleSend("signature uploaded"); // this sets thinking=true for AI response
+    } catch {
+      pushMsg({ id: uid(), type: "agent", text: "Could not upload signature. Please try again." });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSignatureSkip = () => handleSend("skip signature");
+
+  // ── Document upload ───────────────────────────────────────────────────────
+
+  const handleDocumentUpload = async (source: "camera" | "gallery" | "file") => {
+    let base64Data = "";
+    let filename   = "document.jpg";
+    let mimeType   = "image/jpeg";
+
+    try {
+      if (source === "file") {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: ["image/*", "application/pdf"],
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.[0]) return;
+        const asset = result.assets[0];
+        filename  = asset.name;
+        mimeType  = asset.mimeType || "application/octet-stream";
+        base64Data = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } else {
+        const { status } = source === "camera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          pushMsg({ id: uid(), type: "agent", text: "Please allow camera/photo access to add documents." });
+          return;
         }
-      } catch {}
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [stage, complaintId]); // eslint-disable-line react-hooks/exhaustive-deps
+        // Open picker before showing loading — user is browsing, not waiting on us
+        const result = source === "camera"
+          ? await ImagePicker.launchCameraAsync({ base64: true, quality: 0.4 })
+          : await ImagePicker.launchImageLibraryAsync({
+              base64: true, quality: 0.4,
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            });
+        if (result.canceled || !result.assets[0]?.base64) return;
+        const asset = result.assets[0];
+        filename   = `document_${Date.now()}.jpg`;
+        mimeType   = asset.mimeType || "image/jpeg";
+        base64Data = asset.base64!;
+      }
 
-  // ── Polling fallback: every 10s check for status changes ─────────────────
-  // Covers cases where push notification doesn't arrive in demo environment.
-  useEffect(() => {
-    if (!complaintId || stage === "loading") return;
-    const interval = setInterval(async () => {
-      try {
-        const c = await api.authedGet<{ status: string; current_step_label: string }>(
-          `/complaints/${complaintId}`
-        );
-        const prevStatus = lastStatusRef.current;
-        if (prevStatus !== null && prevStatus !== c.status) {
-          // Status changed — insert a status_update card if not already shown
-          const label = c.current_step_label || c.status;
-          pushMsg({ id: uid(), type: "status_update", status: c.status, label });
-          refreshNotifications();
-        }
-        lastStatusRef.current = c.status;
-      } catch {}
-    }, 10_000);
-    return () => clearInterval(interval);
-  }, [complaintId, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (base64Data.length > MAX_B64) {
+        pushMsg({ id: uid(), type: "agent", text: "That file is too large (max ~600 KB). Please use a compressed or cropped version." });
+        return;
+      }
 
-  // ── Scroll chat to end when keyboard opens or resizes ────────────────────
+      // Show a lightweight uploading state — not the AI thinking overlay
+      setUploading(true);
+      await api.authedPost(`/complaints/${complaintId}/upload-doc`, {
+        type: "supporting",
+        file_base64: base64Data,
+        filename,
+        mime_type: mimeType,
+      });
+      pushMsg({ id: uid(), type: "uploaded_file_card", filename, isSignature: false });
+    } catch {
+      pushMsg({ id: uid(), type: "agent", text: "Could not upload document. Please try again." });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDocumentsDone = () => handleSend("done uploading documents");
+
+  // Update refs on every render so callbacks always use the latest closure
+  handleSendRef.current    = handleSend;
+  applyResponseRef.current = applyResponse;
+
+  // ── Polling (rejection + status fallback) ────────────────────────────────
+
+  useComplaintPolling({
+    complaintId,
+    stage,
+    lastStatusRef,
+    applyResponseRef,
+    pushStatusCard,
+    refreshNotifications,
+    setStage,
+    setThinking,
+    setThinkingSteps,
+  });
+
+  // ── Auto-scroll whenever a new message is added ──────────────────────────
+
   useEffect(() => {
-    // keyboardDidShow: fires after keyboard is fully visible
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages.length]);
+
+  // ── Scroll to end when keyboard opens ────────────────────────────────────
+
+  useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => {
-      // Two passes: first at 150ms (layout resized), second at 400ms (safe fallback)
       setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }),  400);
     });
@@ -260,7 +349,6 @@ export default function ChatScreen() {
             {parentCategory?.icon}  {parentCategory?.label}
           </Text>
         </View>
-        {/* AI badge */}
         <View style={[s.aiBadge, { backgroundColor: theme.primary + "22" }]}>
           <Text style={[s.aiBadgeText, { color: theme.primary }]}>AI</Text>
         </View>
@@ -278,21 +366,16 @@ export default function ChatScreen() {
           contentContainerStyle={s.messageList}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd({ animated: true })
-          }
-          onLayout={() =>
-            listRef.current?.scrollToEnd({ animated: false })
-          }
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           renderItem={({ item }) => (
-            <MessageRow
+            <ChatMessageRow
               msg={item}
               theme={theme}
               onViewPdf={(filename, base64) => {
                 if (Platform.OS === "web") {
                   setPdfViewer({ visible: true, filename, base64 });
                 } else {
-                  // Native: store data and navigate to full-screen route
                   setPdfViewerData({
                     pdfBase64: base64 ?? "",
                     filename,
@@ -303,12 +386,16 @@ export default function ChatScreen() {
                   router.push("/pdf-viewer");
                 }
               }}
+              onSignatureUpload={handleSignatureUpload}
+              onSignatureSkip={handleSignatureSkip}
+              onDocumentUpload={handleDocumentUpload}
+              onDocumentsDone={handleDocumentsDone}
+              uploading={uploading}
               onActionBtn={(btn) => handleSend(btn)}
             />
           )}
         />
 
-        {/* Thinking strip + input */}
         <View>
           <ThinkingStrip
             visible={thinking}
@@ -335,11 +422,7 @@ export default function ChatScreen() {
                   ]}
                   value={input}
                   onChangeText={setInput}
-                  placeholder={
-                    stage === "confirming"
-                      ? "Or type your reply here…"
-                      : "Type your message..."
-                  }
+                  placeholder={stage === "confirming" ? "Or type your reply here…" : "Type your message..."}
                   placeholderTextColor={theme.subtext}
                   onSubmitEditing={() => handleSend()}
                   returnKeyType="send"
@@ -362,7 +445,6 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* PDF Viewer */}
       {pdfViewer.visible && (
         <PdfViewer
           visible
@@ -383,117 +465,6 @@ export default function ChatScreen() {
   );
 }
 
-// ── MessageRow ────────────────────────────────────────────────────────────────
-
-function MessageRow({
-  msg, theme, onViewPdf, onActionBtn,
-}: {
-  msg: Message;
-  theme: ReturnType<typeof useTheme>;
-  onViewPdf: (filename: string, base64?: string) => void;
-  onActionBtn: (btn: string) => void;
-}) {
-  switch (msg.type) {
-    case "user":
-      return (
-        <View style={s.userBubbleWrap}>
-          <View style={[s.userBubble, { backgroundColor: theme.primary }]}>
-            <Text style={s.userText}>{msg.text}</Text>
-          </View>
-        </View>
-      );
-
-    case "agent":
-      return (
-        <View style={s.agentBubbleWrap}>
-          <View style={s.agentLabelRow}>
-            <View style={[s.agentDot, { backgroundColor: theme.primary }]} />
-            <Text style={[s.agentLabel, { color: theme.primary }]}>CivicFlow AI</Text>
-          </View>
-          <View style={[s.agentBubble, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[s.agentText, { color: theme.text }]}>{msg.text}</Text>
-          </View>
-        </View>
-      );
-
-    case "action_buttons":
-      return (
-        <View style={s.actionRowWrap}>
-          {msg.buttons.map((btn) => {
-            const isPrimary = /^(yes|submit|haan|confirm|ok)/i.test(btn);
-            return (
-              <TouchableOpacity
-                key={btn}
-                style={[
-                  s.actionBtn,
-                  isPrimary
-                    ? { backgroundColor: theme.primary }
-                    : { borderColor: theme.border, borderWidth: 1 },
-                ]}
-                onPress={() => onActionBtn(btn)}
-              >
-                <Text style={[s.actionBtnText, { color: isPrimary ? "#fff" : theme.text }]}>
-                  {btn}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      );
-
-    case "status_update":
-      return (
-        <View style={[s.statusCard, { backgroundColor: "#22c55e18", borderColor: "#22c55e" }]}>
-          <Text style={s.statusIcon}>✅</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.statusTitle, { color: "#16a34a" }]}>Complaint Filed!</Text>
-            <Text style={[s.statusLabel, { color: "#16a34a" }]}>{msg.label}</Text>
-          </View>
-        </View>
-      );
-
-    case "pdf_card": {
-      const isBlank = msg.label === "blank_form";
-      return (
-        <View style={s.agentBubbleWrap}>
-          <View style={[s.pdfCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={s.pdfCardTop}>
-              <Text style={s.pdfIcon}>📄</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.pdfName, { color: theme.text }]} numberOfLines={1}>
-                  {msg.filename}
-                </Text>
-                <Text style={[s.pdfSub, { color: theme.subtext }]}>
-                  {isBlank ? "Blank form — preview only" : "Filled complaint form"}
-                </Text>
-              </View>
-            </View>
-            <View style={s.pdfBtnRow}>
-              <TouchableOpacity
-                style={[s.pdfBtn, { borderColor: theme.border, borderWidth: 1 }]}
-                onPress={() => onViewPdf(msg.filename, msg.pdfBase64)}
-              >
-                <Text style={[s.pdfBtnText, { color: theme.text }]}>View PDF</Text>
-              </TouchableOpacity>
-              {!isBlank && (
-                <TouchableOpacity
-                  style={[s.pdfBtn, { backgroundColor: theme.primary }]}
-                  onPress={() => onActionBtn("yes, submit it")}
-                >
-                  <Text style={[s.pdfBtnText, { color: "#fff" }]}>Submit</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    default:
-      return null;
-  }
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 let _uid = 0;
@@ -502,11 +473,10 @@ function uid() { return `${Date.now()}-${++_uid}`; }
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root:   { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  root:     { flex: 1 },
+  center:   { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   bodyText: { fontSize: 15 },
 
-  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -515,90 +485,18 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 10,
   },
-  backBtn:    { padding: 4 },
-  backArrow:  { fontSize: 20 },
+  backBtn:      { padding: 4 },
+  backArrow:    { fontSize: 20 },
   headerCenter: { flex: 1 },
   headerTitle:  { fontSize: 16, fontWeight: "700" },
   headerSub:    { fontSize: 11, marginTop: 1 },
   aiBadge:      { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   aiBadgeText:  { fontSize: 11, fontWeight: "800", letterSpacing: 1 },
 
-  // Messages
   messageList: { padding: 16, gap: 12, paddingBottom: 8 },
 
-  userBubbleWrap: { alignItems: "flex-end" },
-  userBubble: {
-    maxWidth: "78%",
-    borderRadius: 18,
-    borderBottomRightRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  userText: { color: "#fff", fontSize: 15, lineHeight: 21 },
-
-  agentBubbleWrap: { alignItems: "flex-start" },
-  agentLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 },
-  agentDot:  { width: 6, height: 6, borderRadius: 3 },
-  agentLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
-  agentBubble: {
-    maxWidth: "84%",
-    borderRadius: 18,
-    borderTopLeftRadius: 4,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  agentText: { fontSize: 15, lineHeight: 22 },
-
-  actionRowWrap: { flexDirection: "row", gap: 10, marginTop: 4, flexWrap: "wrap" },
-  actionBtn: {
-    borderRadius: 22,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    minWidth: 90,
-    alignItems: "center",
-  },
-  actionBtnText: { fontSize: 14, fontWeight: "700" },
-
-  statusCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1.5,
-    padding: 14,
-    gap: 12,
-  },
-  statusIcon:  { fontSize: 22 },
-  statusTitle: { fontSize: 15, fontWeight: "700" },
-  statusLabel: { fontSize: 13, marginTop: 2 },
-
-  // PDF card (inline in chat)
-  pdfCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 8,
-    width: "92%",
-  },
-  pdfCardTop:  { flexDirection: "row", alignItems: "center", gap: 10 },
-  pdfIcon:     { fontSize: 28 },
-  pdfName:     { fontSize: 13, fontWeight: "700" },
-  pdfSub:      { fontSize: 11, marginTop: 1 },
-  pdfBtnRow:   { flexDirection: "row", gap: 8, marginTop: 4 },
-  pdfBtn: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  pdfBtnText: { fontSize: 14, fontWeight: "700" },
-
-  // Input bar
-  inputBar:    { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10 },
-  inputRow:    { flexDirection: "row", gap: 8, alignItems: "flex-end" },
+  inputBar:  { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10 },
+  inputRow:  { flexDirection: "row", gap: 8, alignItems: "flex-end" },
   textInput: {
     flex: 1,
     borderRadius: 22,

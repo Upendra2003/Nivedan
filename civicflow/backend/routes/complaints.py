@@ -433,3 +433,54 @@ def update_status(complaint_id: str):
         },
     )
     return jsonify({"ok": True}), 200
+
+
+# ---------------------------------------------------------------------------
+# POST /complaints/<id>/upload-doc
+# ---------------------------------------------------------------------------
+
+@complaints_bp.route("/<complaint_id>/upload-doc", methods=["POST"])
+@jwt_required
+def upload_document(complaint_id: str):
+    """Store a signature or supporting document (base64) on the complaint."""
+    try:
+        oid = ObjectId(complaint_id)
+    except Exception:
+        return jsonify({"error": "invalid id"}), 400
+
+    complaint = db.complaints.find_one({"_id": oid, "user_id": g.user["_id"]})
+    if not complaint:
+        return jsonify({"error": "not found"}), 404
+
+    data      = request.get_json(silent=True) or {}
+    doc_type  = (data.get("type") or "").strip()
+    file_b64  = (data.get("file_base64") or "").strip()
+    filename  = (data.get("filename") or "document")[:200]
+    mime_type = (data.get("mime_type") or "application/octet-stream")[:100]
+
+    if doc_type not in ("signature", "supporting"):
+        return jsonify({"error": "type must be 'signature' or 'supporting'"}), 400
+    if not file_b64:
+        return jsonify({"error": "file_base64 is required"}), 400
+    if len(file_b64) > 7_000_000:  # ~5 MB limit
+        return jsonify({"error": "file too large (max ~5 MB)"}), 413
+
+    now = _now()
+    if doc_type == "signature":
+        db.complaints.update_one(
+            {"_id": oid},
+            {"$set": {"signature_b64": file_b64, "updated_at": now}},
+        )
+    else:
+        db.complaints.update_one(
+            {"_id": oid},
+            {
+                "$push": {"supporting_docs": {
+                    "filename":  filename,
+                    "file_b64":  file_b64,
+                    "mime_type": mime_type,
+                }},
+                "$set": {"updated_at": now},
+            },
+        )
+    return jsonify({"ok": True}), 200

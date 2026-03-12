@@ -1,5 +1,10 @@
+import os
 from dotenv import load_dotenv
 load_dotenv()  # must happen before any module that reads os.getenv (db, routes)
+
+# C-3: Fail loudly if JWT_SECRET is missing — empty secret makes all tokens forgeable
+if not os.getenv("JWT_SECRET"):
+    raise RuntimeError("JWT_SECRET environment variable is not set. Refusing to start.")
 
 from flask import Flask
 from flask_cors import CORS

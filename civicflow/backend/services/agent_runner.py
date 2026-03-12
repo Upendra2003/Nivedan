@@ -36,9 +36,14 @@ SUBCATEGORY_CONFIG = {
         "form_name":   "salary_non_payment",
         "fields": [
             ("complainant_name",      "your full name"),
+            ("complainant_address",   "your current address"),
+            ("complainant_phone",     "your phone number"),
+            ("complainant_email",     "your email address (or type 'none' if you don't have one)"),
             ("employer_name",         "your employer / company name"),
             ("employer_address",      "your employer's full address"),
+            ("nature_of_business",    "the nature of business / industry type of your employer"),
             ("employment_start_date", "date you started working"),
+            ("designation",           "your job title or designation"),
             ("last_paid_date",        "last date salary was paid"),
             ("months_pending",        "number of months salary is unpaid"),
             ("amount_pending",        "total unpaid amount in rupees"),
@@ -205,6 +210,7 @@ Next task: {next_field}
 ### COLLECT_FIELDS — collect fields one by one
 - Extract values from user messages via EXTRACTED
 - When ALL fields done: ACTION: fill_form
+- NEVER use ACTION: submit from this state — always fill_form first
 
 ### PREVIEW — filled PDF shown, awaiting confirmation
 - User says yes/confirm/submit/approve: ACTION: submit
@@ -291,13 +297,18 @@ def _build_summary(form_data: dict, cfg: dict) -> str:
 
 
 def _fetch_blank_form_b64(cfg: dict) -> str | None:
-    """Fetch blank form PDF from mock portal. Falls back to generating a generic blank."""
+    """Fetch blank form PDF from mock portal using the subcategory's form_name.
+    Falls back to salary_complaint if the specific form endpoint returns non-200."""
     try:
-        portal_url = os.getenv("MOCK_PORTAL_URL", "http://localhost:5001")
-        # Try the salary_complaint blank form endpoint (only one the portal serves)
-        resp = requests.get(f"{portal_url}/portal/forms/salary_complaint", timeout=5)
+        form_name = cfg.get("form_name", "salary_complaint")
+        resp = requests.get(f"{MOCK_PORTAL_URL}/portal/forms/{form_name}", timeout=5)
         if resp.status_code == 200:
             return base64.b64encode(resp.content).decode()
+        # Fallback: portal currently only serves salary_complaint — use it for other subcategories
+        if form_name != "salary_complaint":
+            fallback = requests.get(f"{MOCK_PORTAL_URL}/portal/forms/salary_complaint", timeout=5)
+            if fallback.status_code == 200:
+                return base64.b64encode(fallback.content).decode()
     except Exception:
         pass
     return None
@@ -321,141 +332,127 @@ def _submit_to_portal(complaint_id: str, user: dict, form_data: dict, cfg: dict,
     return resp.json()
 
 
-# ── Main entry ────────────────────────────────────────────────────────────────
+# ── State handlers ────────────────────────────────────────────────────────────
 
-def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
-    """
-    One agent turn.
-    Returns: { reply, action, action_data, thinking_steps }
-    """
-    cid        = ObjectId(complaint_id)
-    complaint  = db.complaints.find_one({"_id": cid, "user_id": user["_id"]})
-    if not complaint:
-        return _err("Complaint not found.")
+def _handle_greeting(cid, form_data: dict, cfg: dict, user: dict, language: str) -> dict:
+    """CHAT + empty message → hardcoded greeting, no LLM call."""
+    lang_code = user.get("preferred_language", "en") or "en"
+    user_name = user.get("name", "")
+    title     = cfg["title"]
+    authority = cfg["authority"]
 
-    form_data     = dict(complaint.get("form_data") or {})
-    state         = complaint.get("agent_state", "CHAT")
-    history       = list(complaint.get("agent_history") or [])
-    language      = _lang(user)
-    user_name     = user.get("name", "")
-    subcategory   = complaint.get("subcategory", "")
-    category      = complaint.get("category", "")
-    cfg           = _config(subcategory)
+    greet_en = (
+        f"Hello {user_name}! I'm CivicFlow AI, your legal assistant. "
+        f"I'll help you file a {title} complaint with the {authority}. "
+        f"Tell me what happened — can you describe the situation?"
+    )
+    greet_map = {
+        "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
+        "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
+        "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
+        "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
+        "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
+    }
+    db.complaints.update_one(
+        {"_id": cid},
+        {"$set": {
+            "agent_state":   "CHAT",
+            "agent_history": [],   # keep empty — Sarvam requires user msg first
+            "form_data":     form_data,
+            "updated_at":    datetime.now(timezone.utc),
+        }},
+    )
+    return {
+        "reply":          greet_map.get(lang_code, greet_en),
+        "action":         None,
+        "action_data":    None,
+        "thinking_steps": ["👋 Starting session...", f"🌐 Language: {language}"],
+    }
 
-    # ── Auto-prefill user's own name ──────────────────────────────────────────
-    if user_name and not form_data.get("complainant_name"):
-        form_data["complainant_name"] = user_name
 
-    # ── CHAT + empty message = initial greeting (no LLM call needed) ─────────
-    if state == "CHAT" and not user_message:
-        lang_code  = user.get("preferred_language", "en") or "en"
-        title      = cfg["title"]
-        authority  = cfg["authority"]
-        issue      = cfg["issue"]
+def _handle_rejected(cid, complaint: dict, form_data: dict, cfg: dict) -> dict:
+    """REJECTED → LLM-assisted field correction, regenerate PDF, advance to PREVIEW."""
+    rejection_reason = complaint.get("rejection_reason", "No reason provided.")
+    thinking_steps   = ["🔄 Analysing rejection...", "✏ Preparing correction..."]
 
-        greet_en = (
-            f"Hello {user_name}! I'm CivicFlow AI, your legal assistant. "
-            f"I'll help you file a {title} complaint with the {authority}. "
-            f"Tell me what happened — can you describe the situation?"
+    correction_prompt = (
+        f'The complaint form was rejected. Reason: "{rejection_reason}"\n\n'
+        f"Current form data:\n{json.dumps(form_data, indent=2)}\n\n"
+        "Based on the rejection reason, identify which field(s) need correction "
+        "and provide corrected values. Respond ONLY with a JSON object like "
+        '{"field_key": "corrected_value"}. If nothing specific can be identified, '
+        'respond with {}.'
+    )
+    try:
+        correction_raw = chat_completion(
+            [{"role": "user", "content": correction_prompt}],
+            system_prompt="You are a form correction assistant. Respond only with a JSON object.",
         )
-        greet_map = {
-            "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
-            "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
-            "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
-            "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
-            "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
-        }
-        reply = greet_map.get(lang_code, greet_en)
+        m = re.search(r'\{[^}]*\}', correction_raw, re.DOTALL)
+        if m:
+            corrections = json.loads(m.group())
+            valid_keys  = {f[0] for f in cfg["fields"]}
+            for k, v in corrections.items():
+                if k in valid_keys and v and len(str(v)) < 500:
+                    form_data[k] = str(v)
+                    thinking_steps.append(f"✏ Corrected: {k.replace('_', ' ')} → {v}")
+    except Exception:
+        thinking_steps.append("⚠ Auto-correction skipped — regenerating with existing data...")
+
+    try:
+        pdf_data   = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+        pdf_base64 = generate_pdf_b64(cfg["form_name"], pdf_data)
+        thinking_steps.append("🖨️ Corrected PDF ready")
         db.complaints.update_one(
             {"_id": cid},
-            {"$set": {
-                "agent_state":   "CHAT",
-                "agent_history": [],          # keep empty — Sarvam requires user msg first
-                "form_data":     form_data,
-                "updated_at":    datetime.now(timezone.utc),
-            }},
+            {
+                "$set": {
+                    "form_data":   form_data,
+                    "agent_state": "PREVIEW",
+                    "status":      "pending",
+                    "updated_at":  datetime.now(timezone.utc),
+                },
+                "$inc": {"resubmission_count": 1},
+            },
         )
         return {
-            "reply":          reply,
-            "action":         None,
-            "action_data":    None,
-            "thinking_steps": ["👋 Starting session...", f"🌐 Language: {language}"],
+            "reply": (
+                f"Your complaint was rejected. Reason: {rejection_reason}\n\n"
+                "I've automatically corrected the form. Here is the corrected complaint form. "
+                "Please review and approve to resubmit."
+            ),
+            "action": "show_pdf",
+            "action_data": {
+                "filename":   f"Corrected_{cfg['title'].replace(' ', '_')}_Complaint.pdf",
+                "pdf_base64": pdf_base64,
+                "label":      "filled_form",
+            },
+            "thinking_steps": thinking_steps,
         }
+    except Exception as e:
+        return _err(f"Could not regenerate form: {e}")
 
-    # ── REJECTED: auto-correct and regenerate PDF ─────────────────────────────
-    if state == "REJECTED":
-        rejection_reason = complaint.get("rejection_reason", "No reason provided.")
-        thinking_steps = [
-            "🔄 Analysing rejection...",
-            "✏ Preparing correction...",
-        ]
 
-        # Ask LLM to identify corrections
-        correction_prompt = (
-            f'The complaint form was rejected. Reason: "{rejection_reason}"\n\n'
-            f"Current form data:\n{json.dumps(form_data, indent=2)}\n\n"
-            "Based on the rejection reason, identify which field(s) need correction "
-            "and provide corrected values. Respond ONLY with a JSON object like "
-            '{"field_key": "corrected_value"}. If nothing specific can be identified, '
-            'respond with {}.'
-        )
-        try:
-            correction_raw = chat_completion(
-                [{"role": "user", "content": correction_prompt}],
-                system_prompt="You are a form correction assistant. Respond only with a JSON object.",
-            )
-            m = re.search(r'\{[^}]*\}', correction_raw, re.DOTALL)
-            if m:
-                corrections = json.loads(m.group())
-                valid_keys = {f[0] for f in cfg["fields"]}
-                for k, v in corrections.items():
-                    if k in valid_keys and v:
-                        form_data[k] = str(v)
-                        thinking_steps.append(f"✏ Corrected: {k.replace('_', ' ')} → {v}")
-        except Exception:
-            thinking_steps.append("⚠ Auto-correction skipped — regenerating with existing data...")
+def _handle_submitted(complaint: dict) -> dict:
+    """SUBMITTED → no-op, return current filed status."""
+    return {
+        "reply":          "Your complaint is already filed and being tracked.",
+        "action":         "status_update",
+        "action_data":    {"status": "filed", "portal_ref_id": complaint.get("portal_ref_id", "")},
+        "thinking_steps": ["✅ Complaint already filed"],
+    }
 
-        # Generate corrected PDF
-        try:
-            pdf_data = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
-            pdf_base64 = generate_pdf_b64(cfg["form_name"], pdf_data)
-            thinking_steps.append("🖨️ Corrected PDF ready")
-            db.complaints.update_one(
-                {"_id": cid},
-                {"$set": {
-                    "form_data":      form_data,
-                    "agent_state":    "PREVIEW",
-                    "status":         "pending",
-                    "updated_at":     datetime.now(timezone.utc),
-                },
-                "$inc": {"resubmission_count": 1}},
-            )
-            return {
-                "reply": (
-                    f"Your complaint was rejected. Reason: {rejection_reason}\n\n"
-                    "I've automatically corrected the form. Here is the corrected complaint form. "
-                    "Please review and approve to resubmit."
-                ),
-                "action": "show_pdf",
-                "action_data": {
-                    "filename":   f"Corrected_{cfg['title'].replace(' ', '_')}_Complaint.pdf",
-                    "pdf_base64": pdf_base64,
-                    "label":      "filled_form",
-                },
-                "thinking_steps": thinking_steps,
-            }
-        except Exception as e:
-            return _err(f"Could not regenerate form: {e}")
 
-    # ── SUBMITTED: nothing more to do ─────────────────────────────────────────
-    if state == "SUBMITTED":
-        return {
-            "reply": "Your complaint is already filed and being tracked.",
-            "action": "status_update",
-            "action_data": {"status": "filed", "portal_ref_id": complaint.get("portal_ref_id", "")},
-            "thinking_steps": ["✅ Complaint already filed"],
-        }
-
+def _handle_llm_turn(
+    cid, complaint_id: str, user_message: str,
+    form_data: dict, state: str, history: list,
+    language: str, cfg: dict, category: str, user: dict,
+) -> dict:
+    """
+    LLM-driven turn for CHAT (with message), SHOW_BLANK_FORM, COLLECT_FIELDS, PREVIEW.
+    Calls Sarvam, parses EXTRACTED / ACTION, executes the resulting action, persists.
+    """
+    user_name      = user.get("name", "")
     thinking_steps = ["💭 Reading your message...", f"🌐 Sarvam AI processing in {language}..."]
 
     # ── Call LLM ──────────────────────────────────────────────────────────────
@@ -463,12 +460,10 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     if user_message:
         history.append({"role": "user", "content": user_message})
 
-    # Sarvam requires: first message must be "user" (after system).
-    # Strip any leading assistant messages.
+    # Sarvam requires first message to be "user" — strip any leading assistant turns
     llm_history = history
     while llm_history and llm_history[0].get("role") != "user":
         llm_history = llm_history[1:]
-    # If nothing left (shouldn't happen in normal flow), add a stub
     if not llm_history:
         llm_history = [{"role": "user", "content": user_message or "Hello"}]
 
@@ -480,51 +475,59 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     extracted, llm_action, reply_text = _parse_tail(llm_reply)
     history.append({"role": "assistant", "content": llm_reply})
 
-    # Apply extracted fields (only keys valid for this subcategory)
+    # ── Apply extracted fields ─────────────────────────────────────────────
     valid_keys = {f[0] for f in cfg["fields"]}
     for key, val in extracted.items():
-        if key in valid_keys and val:
+        # In PREVIEW state, accept any non-empty string key so user corrections
+        # (e.g. "change my email") aren't silently dropped by the config allowlist.
+        if val and (key in valid_keys or state == "PREVIEW") and len(str(val)) < 500:
             form_data[key] = str(val)
             thinking_steps.append(f"📝 Noted: {key.replace('_', ' ')} = {val}")
 
-    # ── Fallback: LLM returned only EXTRACTED/ACTION with no visible text ─────
-    # This happens when Sarvam emits metadata lines without a conversational reply.
-    # Generate a natural acknowledgement so the user always sees a response.
+    # ── Fallback: LLM emitted only metadata, no visible reply ─────────────
     if not reply_text and llm_action in ("none", "collect_fields", ""):
         missing = _missing(form_data, cfg["fields"])
         if missing:
-            next_label = missing[0][1]
-            # Build a warm acknowledgement that names what was just collected
-            noted = [v for k, v in extracted.items() if k in valid_keys and v]
-            ack   = f"Got it{', ' + noted[0] if noted else ''}! " if extracted else ""
-            reply_text = f"{ack}Could you please tell me {next_label}?"
+            noted      = [v for k, v in extracted.items() if k in valid_keys and v]
+            ack        = f"Got it{', ' + noted[0] if noted else ''}! " if extracted else ""
+            reply_text = f"{ack}Could you please tell me {missing[0][1]}?"
         else:
             reply_text = "Got it! Let me now prepare your complaint form."
-            llm_action = "fill_form"   # all fields present — trigger PDF generation
+            llm_action = "fill_form"
 
-    # ── Execute actions ───────────────────────────────────────────────────────
+    # ── Override: all fields collected → skip to fill_form ────────────────
+    if llm_action == "collect_fields" and not _missing(form_data, cfg["fields"]):
+        llm_action = "fill_form"
+
+    # ── Guard: LLM said "submit" outside PREVIEW → force fill_form first ──
+    # Prevents the model from bypassing COLLECT_DOCS + PREVIEW states.
+    if llm_action == "submit" and state != "PREVIEW":
+        llm_action = "fill_form"
+
+    # ── Guard: LLM said "fill_form" from PREVIEW → treat as submit ────────
+    # Prevents double-PDF-generation when user confirms from PREVIEW.
+    if llm_action == "fill_form" and state == "PREVIEW":
+        llm_action = "submit"
+
+    # ── Execute action ─────────────────────────────────────────────────────
     action      = None
     action_data = None
     next_state  = state
 
-    # If user provided a corrected value inline during PREVIEW/COLLECT_FIELDS,
-    # the field is already updated in form_data. If nothing is missing anymore,
-    # skip straight to PDF regeneration instead of waiting for another message.
-    if llm_action == "collect_fields" and not _missing(form_data, cfg["fields"]):
-        llm_action = "fill_form"
-
     if llm_action == "fetch_form":
         thinking_steps += [f"📋 Fetching blank {cfg['title']} form...", "📄 Form ready for review"]
-        blank_b64   = _fetch_blank_form_b64(cfg)
         action      = "show_pdf"
         action_data = {
             "filename":   f"{cfg['title'].replace(' ', '_')}_Form_Blank.pdf",
-            "pdf_base64": blank_b64,
+            "pdf_base64": _fetch_blank_form_b64(cfg),
             "label":      "blank_form",
         }
         next_state = "SHOW_BLANK_FORM"
         if not reply_text:
-            reply_text = f"Here is the official {cfg['title']} complaint form. I can fill this for you — just say 'fill it' when you're ready."
+            reply_text = (
+                f"Here is the official {cfg['title']} complaint form. "
+                "I can fill this for you — just say 'fill it' when you're ready."
+            )
 
     elif llm_action == "collect_fields":
         next_state = "COLLECT_FIELDS"
@@ -536,21 +539,28 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
             next_state = "COLLECT_FIELDS"
             thinking_steps.append(f"⚠️ Still need: {missing[0][0]}")
         else:
-            thinking_steps += ["✍️ All fields collected", "🖨️ Generating PDF document...", "✅ PDF ready!"]
-            try:
-                pdf_data   = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
-                pdf_base64 = generate_pdf_b64(cfg["form_name"], pdf_data)
-                action      = "show_pdf"
-                action_data = {
-                    "filename":   f"Your_{cfg['title'].replace(' ', '_')}_Complaint.pdf",
-                    "pdf_base64": pdf_base64,
-                    "label":      "filled_form",
-                }
-                next_state = "PREVIEW"
-                # Always show a detailed summary + the PDF card together
-                reply_text = _build_summary(form_data, cfg)
-            except Exception as e:
-                reply_text = f"Error generating form: {e}"
+            thinking_steps += ["✍️ All fields collected", "📋 Preparing document collection..."]
+            # Persist fields and transition to COLLECT_DOCS (signature + documents)
+            db.complaints.update_one(
+                {"_id": cid},
+                {"$set": {
+                    "form_data":     form_data,
+                    "agent_state":   "COLLECT_DOCS",
+                    "docs_stage":    "signature",
+                    "agent_history": history[-40:],
+                    "updated_at":    datetime.now(timezone.utc),
+                }},
+            )
+            return {
+                "reply": reply_text or (
+                    "Great! I\'ve collected all the information. "
+                    "Before generating your complaint form, I need your signature. "
+                    "Please upload a photo of your signature, or tap \'Skip\' to continue without one."
+                ),
+                "action": "request_signature",
+                "action_data": {},
+                "thinking_steps": thinking_steps,
+            }
 
     elif llm_action == "submit":
         thinking_steps += [
@@ -566,16 +576,16 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
                 {"_id": cid},
                 {
                     "$set": {
-                        "status":         "filed",
-                        "portal_ref_id":  portal_ref_id,
-                        "agent_state":    "SUBMITTED",
-                        "form_data":      form_data,
-                        "agent_history":  history[-30:],
-                        "updated_at":     now,
+                        "status":        "filed",
+                        "portal_ref_id": portal_ref_id,
+                        "agent_state":   "SUBMITTED",
+                        "form_data":     form_data,
+                        "agent_history": history[-30:],
+                        "updated_at":    now,
                     },
                     "$push": {
                         "timeline": {
-                            "event":     "Filed with Labour Commission",
+                            "event":     f"Filed with {cfg['authority']}",
                             "timestamp": now,
                             "detail":    f"Portal ref: {portal_ref_id}",
                         }
@@ -588,14 +598,14 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
                     f"Reference ID: {portal_ref_id}. "
                     "You'll receive status updates as it progresses. You can track it in 'My Cases'."
                 ),
-                "action":      "status_update",
-                "action_data": {"status": "filed", "portal_ref_id": portal_ref_id},
+                "action":         "status_update",
+                "action_data":    {"status": "filed", "portal_ref_id": portal_ref_id},
                 "thinking_steps": thinking_steps,
             }
         except Exception as e:
             reply_text = f"Submission failed: {e}. Please try again."
 
-    # ── Persist ───────────────────────────────────────────────────────────────
+    # ── Persist ───────────────────────────────────────────────────────────
     db.complaints.update_one(
         {"_id": cid},
         {"$set": {
@@ -605,13 +615,123 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
             "updated_at":    datetime.now(timezone.utc),
         }},
     )
-
     return {
         "reply":          reply_text,
         "action":         action,
         "action_data":    action_data,
         "thinking_steps": thinking_steps,
     }
+
+
+# ── COLLECT_DOCS state handler ───────────────────────────────────────────────
+
+def _handle_collect_docs(cid, complaint: dict, form_data: dict, cfg: dict) -> dict:
+    """
+    COLLECT_DOCS state: two sub-stages driven by complaint.docs_stage.
+      signature  → ask for signature upload, then advance to documents
+      documents  → user done uploading → generate final PDF → PREVIEW
+    """
+    docs_stage = complaint.get("docs_stage", "signature")
+
+    if docs_stage == "signature":
+        # Advance to documents sub-stage
+        db.complaints.update_one(
+            {"_id": cid},
+            {"$set": {"docs_stage": "documents", "updated_at": datetime.now(timezone.utc)}},
+        )
+        return {
+            "reply": (
+                "Got it! Now please upload any supporting documents relevant to your case — "
+                "such as pay slips, bank statements, employment letter, or written notices. "
+                "You can add multiple. Tap 'Done' when finished, or 'Skip' to proceed without documents."
+            ),
+            "action": "request_documents",
+            "action_data": {},
+            "thinking_steps": ["✅ Signature step complete", "📎 Ready for supporting documents..."],
+        }
+
+    # docs_stage == "documents" — generate final PDF
+    signature_b64   = complaint.get("signature_b64")
+    supporting_docs = list(complaint.get("supporting_docs") or [])
+
+    try:
+        pdf_data   = {**form_data, "declaration_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+        pdf_base64 = generate_pdf_b64(
+            cfg["form_name"], pdf_data,
+            signature_b64=signature_b64,
+            supporting_docs=supporting_docs,
+        )
+        doc_count = len(supporting_docs)
+        has_sig   = bool(signature_b64)
+        extras    = []
+        if has_sig:    extras.append("your signature")
+        if doc_count:  extras.append(f"{doc_count} supporting document{'s' if doc_count != 1 else ''}")
+        extra_text = (" with " + " and ".join(extras)) if extras else ""
+
+        db.complaints.update_one(
+            {"_id": cid},
+            {"$set": {
+                "agent_state": "PREVIEW",
+                "form_data":   form_data,
+                "updated_at":  datetime.now(timezone.utc),
+            }},
+        )
+        return {
+            "reply": f"Your complaint form is ready{extra_text}! Please review it carefully before submitting.",
+            "action": "show_pdf",
+            "action_data": {
+                "filename":   f"Your_{cfg['title'].replace(' ', '_')}_Complaint.pdf",
+                "pdf_base64": pdf_base64,
+                "label":      "filled_form",
+            },
+            "thinking_steps": [
+                "✍️ Embedding signature..." if has_sig else "ℹ️ No signature provided",
+                f"📎 Attaching {doc_count} document(s)..." if doc_count else "ℹ️ No attachments",
+                "✅ Final PDF ready!",
+            ],
+        }
+    except Exception as e:
+        return _err(f"Could not generate final form: {e}")
+
+
+# ── Main entry (dispatcher) ───────────────────────────────────────────────────
+
+def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
+    """
+    One agent turn. Loads complaint from DB, dispatches to the correct state handler.
+    Returns: { reply, action, action_data, thinking_steps }
+    """
+    cid       = ObjectId(complaint_id)
+    complaint = db.complaints.find_one({"_id": cid, "user_id": user["_id"]})
+    if not complaint:
+        return _err("Complaint not found.")
+
+    form_data   = dict(complaint.get("form_data") or {})
+    state       = complaint.get("agent_state", "CHAT")
+    history     = list(complaint.get("agent_history") or [])
+    language    = _lang(user)
+    subcategory = complaint.get("subcategory", "")
+    category    = complaint.get("category", "")
+    cfg         = _config(subcategory)
+
+    # Auto-prefill user's own name
+    if user.get("name") and not form_data.get("complainant_name"):
+        form_data["complainant_name"] = user["name"]
+
+    if state == "CHAT" and not user_message:
+        return _handle_greeting(cid, form_data, cfg, user, language)
+    if state == "REJECTED":
+        return _handle_rejected(cid, complaint, form_data, cfg)
+    if state == "SUBMITTED":
+        return _handle_submitted(complaint)
+    if state == "COLLECT_DOCS":
+        return _handle_collect_docs(cid, complaint, form_data, cfg)
+
+    return _handle_llm_turn(
+        cid, complaint_id, user_message,
+        form_data, state, history,
+        language, cfg, category, user,
+    )
 
 
 def _err(msg: str) -> dict:

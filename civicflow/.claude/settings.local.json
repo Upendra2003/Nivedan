@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 C:/Users/upend/AppData/Local/Temp/refactor_agent.py)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv run python -c \"from services.pdf_generator import generate_pdf_b64; print\\('pdf_generator OK'\\)\" 2>&1)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv run python -c \"from services.agent_runner import run_agent, _handle_collect_docs; print\\('agent_runner OK'\\)\" 2>&1)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv run python -c \"from routes.complaints import complaints_bp; print\\([r.rule for r in complaints_bp.url_map._rules if 'upload' in r.rule]\\)\" 2>&1 || uv run python -c \"\nfrom app import create_app\napp = create_app\\(\\)\nroutes = [r.rule for r in app.url_map.iter_rules\\(\\) if 'upload' in r.rule]\nprint\\('Upload routes:', routes\\)\n\" 2>&1)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv run python -c \"from services.agent_runner import run_agent; print\\('OK'\\)\" 2>&1)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv add pillow 2>&1 | tail -3)",
+      "Bash(cd C:/Upendra/IITT/ISE/civicflow/backend && uv run python -c \"\nfrom services.pdf_generator import _orient_image, _detect_doc_type, generate_salary_complaint\nprint\\('orient_image:', _orient_image\\(b'bad'\\)[:4]\\)   # should return original bytes\nprint\\('detect salary:', _detect_doc_type\\('salary_slip_march.jpg'\\)\\)\nprint\\('detect bank:',   _detect_doc_type\\('bank_statement.pdf'\\)\\)\nprint\\('detect other:',  _detect_doc_type\\('photo.jpg'\\)\\)\nprint\\('OK'\\)\n\" 2>&1)"
+    ]
+  }
+}
