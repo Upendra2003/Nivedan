@@ -625,15 +625,30 @@ def _handle_llm_turn(
 
 # ── COLLECT_DOCS state handler ───────────────────────────────────────────────
 
-def _handle_collect_docs(cid, complaint: dict, form_data: dict, cfg: dict) -> dict:
+def _handle_collect_docs(cid, complaint: dict, form_data: dict, cfg: dict, user_message: str = "") -> dict:
     """
     COLLECT_DOCS state: two sub-stages driven by complaint.docs_stage.
-      signature  → ask for signature upload, then advance to documents
-      documents  → user done uploading → generate final PDF → PREVIEW
+      signature  → wait for signature upload or explicit skip, then advance
+      documents  → wait for explicit "done"/"skip", then generate PDF → PREVIEW
+
+    HIGH-4 fix: transitions are gated on confirmed uploads or explicit user intent,
+    not on any arbitrary message — prevents race-condition bypass via a second API call.
     """
     docs_stage = complaint.get("docs_stage", "signature")
+    msg_lower  = user_message.lower()
 
     if docs_stage == "signature":
+        # Advance only if the upload API already stored the signature, or user skipped
+        sig_uploaded = bool(complaint.get("signature_b64"))
+        user_skipped = any(k in msg_lower for k in ("skip", "no signature", "without signature"))
+        if not sig_uploaded and not user_skipped:
+            # Re-show the request — don't advance on random messages
+            return {
+                "reply": None,
+                "action": "request_signature",
+                "action_data": {},
+                "thinking_steps": [],
+            }
         # Advance to documents sub-stage
         db.complaints.update_one(
             {"_id": cid},
@@ -650,7 +665,16 @@ def _handle_collect_docs(cid, complaint: dict, form_data: dict, cfg: dict) -> di
             "thinking_steps": ["✅ Signature step complete", "📎 Ready for supporting documents..."],
         }
 
-    # docs_stage == "documents" — generate final PDF
+    # docs_stage == "documents" — only generate when user explicitly signals done/skip
+    user_is_done = any(k in msg_lower for k in ("done", "skip", "generate", "finish", "proceed", "no document"))
+    if not user_is_done:
+        return {
+            "reply": None,
+            "action": "request_documents",
+            "action_data": {},
+            "thinking_steps": [],
+        }
+
     signature_b64   = complaint.get("signature_b64")
     supporting_docs = list(complaint.get("supporting_docs") or [])
 
@@ -725,7 +749,7 @@ def run_agent(complaint_id: str, user_message: str, user: dict) -> dict:
     if state == "SUBMITTED":
         return _handle_submitted(complaint)
     if state == "COLLECT_DOCS":
-        return _handle_collect_docs(cid, complaint, form_data, cfg)
+        return _handle_collect_docs(cid, complaint, form_data, cfg, user_message)
 
     return _handle_llm_turn(
         cid, complaint_id, user_message,

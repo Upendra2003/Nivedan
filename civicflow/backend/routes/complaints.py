@@ -419,10 +419,13 @@ def update_status(complaint_id: str):
     except Exception:
         return jsonify({"error": "invalid id"}), 400
 
+    _VALID_STATUSES = {"pending", "filed", "acknowledged", "under_review", "next_step", "resolved", "failed"}
     data = request.get_json(silent=True) or {}
     new_status = (data.get("status") or "").strip()
     if not new_status:
         return jsonify({"error": "status is required"}), 400
+    if new_status not in _VALID_STATUSES:
+        return jsonify({"error": f"invalid status '{new_status}'"}), 400
 
     now = _now()
     db.complaints.update_one(
@@ -438,6 +441,13 @@ def update_status(complaint_id: str):
 # ---------------------------------------------------------------------------
 # POST /complaints/<id>/upload-doc
 # ---------------------------------------------------------------------------
+
+_ALLOWED_MIME_TYPES = {
+    "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
+    "application/pdf",
+}
+_MAX_SUPPORTING_DOCS = 10
+
 
 @complaints_bp.route("/<complaint_id>/upload-doc", methods=["POST"])
 @jwt_required
@@ -456,14 +466,19 @@ def upload_document(complaint_id: str):
     doc_type  = (data.get("type") or "").strip()
     file_b64  = (data.get("file_base64") or "").strip()
     filename  = (data.get("filename") or "document")[:200]
-    mime_type = (data.get("mime_type") or "application/octet-stream")[:100]
+    mime_type = (data.get("mime_type") or "").strip().lower()[:100]
 
+    # Validate type
     if doc_type not in ("signature", "supporting"):
         return jsonify({"error": "type must be 'signature' or 'supporting'"}), 400
     if not file_b64:
         return jsonify({"error": "file_base64 is required"}), 400
-    if len(file_b64) > 7_000_000:  # ~5 MB limit
-        return jsonify({"error": "file too large (max ~5 MB)"}), 413
+    if len(file_b64) > 1_200_000:  # ~900 KB decoded — matches mobile MAX_B64
+        return jsonify({"error": "file too large (max ~900 KB)"}), 413
+
+    # HIGH-1: server-side MIME allowlist — client restrictions are not a security boundary
+    if mime_type not in _ALLOWED_MIME_TYPES:
+        return jsonify({"error": f"unsupported file type '{mime_type}'. Allowed: jpeg, png, gif, webp, pdf"}), 415
 
     now = _now()
     if doc_type == "signature":
@@ -472,6 +487,10 @@ def upload_document(complaint_id: str):
             {"$set": {"signature_b64": file_b64, "updated_at": now}},
         )
     else:
+        # HIGH-2: cap supporting docs to prevent unbounded BSON growth
+        existing_count = len(complaint.get("supporting_docs") or [])
+        if existing_count >= _MAX_SUPPORTING_DOCS:
+            return jsonify({"error": f"maximum {_MAX_SUPPORTING_DOCS} supporting documents allowed"}), 400
         db.complaints.update_one(
             {"_id": oid},
             {

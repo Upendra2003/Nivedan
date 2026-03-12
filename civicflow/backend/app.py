@@ -6,6 +6,11 @@ load_dotenv()  # must happen before any module that reads os.getenv (db, routes)
 if not os.getenv("JWT_SECRET"):
     raise RuntimeError("JWT_SECRET environment variable is not set. Refusing to start.")
 
+# LOW-2: Warn if WEBHOOK_SECRET is unset — webhooks will accept all requests without verification
+if not os.getenv("WEBHOOK_SECRET"):
+    import warnings
+    warnings.warn("WEBHOOK_SECRET is not set — webhook endpoint accepts unauthenticated requests.", stacklevel=1)
+
 from flask import Flask
 from flask_cors import CORS
 from routes.auth import auth_bp
@@ -30,4 +35,4 @@ app.register_blueprint(agent_bp, url_prefix="/agent")
 if __name__ == "__main__":
     # host="0.0.0.0" makes Flask accept connections from the whole LAN,
     # not just localhost — required for Expo Go on a physical device.
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")

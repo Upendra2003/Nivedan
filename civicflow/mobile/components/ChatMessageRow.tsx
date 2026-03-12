@@ -146,19 +146,21 @@ export default function ChatMessageRow({
             <View style={{ flex: 1 }}>
               <Text style={[s.docCardTitle, { color: theme.text }]}>Signature Required</Text>
               <Text style={[s.docCardSub, { color: theme.subtext }]}>
-                Upload a photo of your handwritten signature
+                {uploading ? "Uploading signature…" : "Upload a photo of your handwritten signature"}
               </Text>
             </View>
             <View style={s.docBtnRow}>
               <TouchableOpacity
-                style={[s.docBtn, { backgroundColor: theme.primary }]}
+                style={[s.docBtn, { backgroundColor: theme.primary, opacity: uploading ? 0.5 : 1 }]}
                 onPress={() => onSignatureUpload?.()}
+                disabled={uploading}
               >
-                <Text style={s.docBtnTextWhite}>📷 Upload</Text>
+                <Text style={s.docBtnTextWhite}>{uploading ? "Uploading…" : "📷 Upload"}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.docBtn, { borderColor: theme.border, borderWidth: 1 }]}
+                style={[s.docBtn, { borderColor: theme.border, borderWidth: 1, opacity: uploading ? 0.4 : 1 }]}
                 onPress={() => onSignatureSkip?.()}
+                disabled={uploading}
               >
                 <Text style={[s.docBtnText, { color: theme.text }]}>Skip</Text>
               </TouchableOpacity>
@@ -175,32 +177,38 @@ export default function ChatMessageRow({
             <View style={{ flex: 1 }}>
               <Text style={[s.docCardTitle, { color: theme.text }]}>Upload Documents</Text>
               <Text style={[s.docCardSub, { color: theme.subtext }]}>
-                Pay slips, bank statements, letters, etc.
+                {uploading
+                  ? "Uploading file, please wait…"
+                  : "Pay slips, bank statements, letters, etc."}
               </Text>
             </View>
-            <View style={s.docBtnRow}>
+            <View style={[s.docBtnRow, { opacity: uploading ? 0.45 : 1 }]}>
               <TouchableOpacity
                 style={[s.docBtn, { borderColor: theme.border, borderWidth: 1 }]}
                 onPress={() => onDocumentUpload?.("camera")}
+                disabled={uploading}
               >
                 <Text style={[s.docBtnText, { color: theme.text }]}>📷 Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.docBtn, { borderColor: theme.border, borderWidth: 1 }]}
                 onPress={() => onDocumentUpload?.("gallery")}
+                disabled={uploading}
               >
                 <Text style={[s.docBtnText, { color: theme.text }]}>🖼 Gallery</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.docBtn, { borderColor: theme.border, borderWidth: 1 }]}
                 onPress={() => onDocumentUpload?.("file")}
+                disabled={uploading}
               >
                 <Text style={[s.docBtnText, { color: theme.text }]}>📄 File</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[s.doneBtn, { backgroundColor: theme.primary }]}
+              style={[s.doneBtn, { backgroundColor: theme.primary, opacity: uploading ? 0.45 : 1 }]}
               onPress={() => onDocumentsDone?.()}
+              disabled={uploading}
             >
               <Text style={s.doneBtnText}>✓ Done — Generate My Form</Text>
             </TouchableOpacity>

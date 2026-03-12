@@ -324,8 +324,10 @@ def generate_salary_complaint(form_data: dict, signature_b64: str = None, suppor
     pdf.cell(W - half, 6, f"Date: {decl_date}", new_x="LMARGIN", new_y="NEXT")
     if signature_b64:
         try:
-            raw = _orient_image(base64.b64decode(signature_b64))
-            pdf.image(BytesIO(raw), x=65, y=sig_y - 1, w=48, h=10)
+            decoded = base64.b64decode(signature_b64)
+            if len(decoded) <= 1_200_000:  # MED-3: skip if > 1.2 MB decoded to cap Pillow memory
+                raw = _orient_image(decoded)
+                pdf.image(BytesIO(raw), x=65, y=sig_y - 1, w=48, h=10)
         except Exception:
             pass  # bad image data — leave blank line as-is
     pdf.ln(6)
@@ -391,11 +393,96 @@ def generate_salary_complaint(form_data: dict, signature_b64: str = None, suppor
     return base64.b64encode(main_pdf_bytes).decode()
 
 
+def _append_signature_and_docs(main_pdf_bytes: bytes, signature_b64: str = None, supporting_docs: list = None) -> bytes:
+    """Append signature page + supporting docs to any PDF (used by non-salary fallback)."""
+    MAX_IMAGE_BYTES = 700_000
+    extra = FPDF()
+    extra.set_margins(20, 20, 20)
+    W = extra.w - 40
+
+    added_image_pages = False
+
+    # Signature extra page (non-salary forms have no inline signature line)
+    if signature_b64:
+        try:
+            raw = base64.b64decode(signature_b64)
+            if len(raw) <= MAX_IMAGE_BYTES:
+                corrected = _orient_image(raw)
+                extra.add_page()
+                extra.set_font("Helvetica", "B", 10)
+                extra.cell(W, 8, "Complainant Signature", border="B", new_x="LMARGIN", new_y="NEXT")
+                extra.ln(4)
+                extra.image(BytesIO(corrected), x=20, y=extra.get_y(), w=80, h=20)
+                added_image_pages = True
+        except Exception:
+            pass
+
+    # Supporting document image pages
+    for doc in (supporting_docs or []):
+        file_b64  = doc.get("file_b64", "")
+        filename  = _s(doc.get("filename", "Document"))[:100]
+        mime_type = doc.get("mime_type", "").lower()
+        if not file_b64:
+            continue
+        try:
+            file_bytes = base64.b64decode(file_b64)
+        except Exception:
+            continue
+        if "pdf" not in mime_type and not filename.lower().endswith(".pdf"):
+            extra.add_page()
+            extra.set_font("Helvetica", "B", 10)
+            extra.cell(W, 8, f"Attachment: {filename}", border="B", new_x="LMARGIN", new_y="NEXT")
+            extra.ln(2)
+            if len(file_bytes) > MAX_IMAGE_BYTES:
+                extra.set_font("Helvetica", "", 9)
+                extra.cell(W, 6, f"[File too large to embed — {len(file_bytes) // 1024} KB. Attach separately.]")
+            else:
+                try:
+                    corrected = _orient_image(file_bytes)
+                    extra.image(BytesIO(corrected), x=20, y=extra.get_y(), w=170)
+                    added_image_pages = True
+                except Exception:
+                    extra.set_font("Helvetica", "", 9)
+                    extra.cell(W, 6, "[Image could not be rendered]")
+
+    # Merge via pypdf
+    try:
+        from pypdf import PdfWriter, PdfReader
+        writer = PdfWriter()
+        for page in PdfReader(BytesIO(main_pdf_bytes)).pages:
+            writer.add_page(page)
+        if added_image_pages:
+            extra_bytes = bytes(extra.output())
+            for page in PdfReader(BytesIO(extra_bytes)).pages:
+                writer.add_page(page)
+        # Append PDF attachments
+        for doc in (supporting_docs or []):
+            file_b64  = doc.get("file_b64", "")
+            mime_type = doc.get("mime_type", "").lower()
+            filename  = doc.get("filename", "")
+            if not file_b64:
+                continue
+            if "pdf" in mime_type or filename.lower().endswith(".pdf"):
+                try:
+                    att_bytes = base64.b64decode(file_b64)
+                    for page in PdfReader(BytesIO(att_bytes)).pages:
+                        writer.add_page(page)
+                except Exception:
+                    pass
+        out = BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception:
+        return main_pdf_bytes  # pypdf unavailable
+
+
 def generate_pdf_b64(form_name: str, data: dict, signature_b64: str = None, supporting_docs: list = None) -> str:
     """Generate a filled PDF and return it as a base64 string."""
     if "salary" in form_name.lower():
         return generate_salary_complaint(data, signature_b64=signature_b64, supporting_docs=supporting_docs)
     pdf_bytes = generate_pdf("", form_name, data)
+    if signature_b64 or supporting_docs:
+        pdf_bytes = _append_signature_and_docs(pdf_bytes, signature_b64, supporting_docs)
     return base64.b64encode(pdf_bytes).decode()
 
 

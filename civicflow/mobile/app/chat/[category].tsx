@@ -174,8 +174,8 @@ export default function ChatScreen() {
 
   // ── Signature upload ──────────────────────────────────────────────────────
 
-  // Max base64 size we'll accept (~600 KB decoded = ~800 KB base64)
-  const MAX_B64 = 800_000;
+  // Max base64 chars before upload — 1 200 000 chars ≈ 900 KB decoded (server rejects above this)
+  const MAX_B64 = 1_200_000;
 
   const handleSignatureUpload = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -207,7 +207,8 @@ export default function ChatScreen() {
       pushMsg({ id: uid(), type: "uploaded_file_card", filename: "signature.jpg", isSignature: true });
       setUploading(false);
       await handleSend("signature uploaded"); // this sets thinking=true for AI response
-    } catch {
+    } catch (e) {
+      if (__DEV__) console.warn("[signature upload]", e);
       pushMsg({ id: uid(), type: "agent", text: "Could not upload signature. Please try again." });
     } finally {
       setUploading(false);
@@ -272,7 +273,8 @@ export default function ChatScreen() {
         mime_type: mimeType,
       });
       pushMsg({ id: uid(), type: "uploaded_file_card", filename, isSignature: false });
-    } catch {
+    } catch (e) {
+      if (__DEV__) console.warn("[document upload]", e);
       pushMsg({ id: uid(), type: "agent", text: "Could not upload document. Please try again." });
     } finally {
       setUploading(false);
@@ -281,7 +283,10 @@ export default function ChatScreen() {
 
   const handleDocumentsDone = () => handleSend("done uploading documents");
 
-  // Update refs on every render so callbacks always use the latest closure
+  // Sync refs to the latest closures on every render.
+  // This is intentional: polling intervals and the pdf-viewer callback hold a ref,
+  // not a direct reference, so they always call the freshest version of these functions
+  // without being listed as effect dependencies (which would restart the intervals).
   handleSendRef.current    = handleSend;
   applyResponseRef.current = applyResponse;
 

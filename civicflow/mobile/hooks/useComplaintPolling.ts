@@ -36,26 +36,29 @@ export function useComplaintPolling({
   // ── Poll for rejection when stage = "submitted" ──────────────────────────
   useEffect(() => {
     if (stage !== "submitted" || !complaintId) return;
+    // cancelled flag prevents state updates after the effect cleans up
+    let cancelled = false;
     const interval = setInterval(async () => {
+      if (cancelled) return;
       try {
         const c = await api.authedGet<{ status: string; agent_state: string }>(
           `/complaints/${complaintId}`
         );
+        if (cancelled) return;
         if (c.status === "failed" || c.agent_state === "REJECTED") {
-          clearInterval(interval);
           setStage("chatting");
           setThinkingSteps(undefined);
           setThinking(true);
           try {
             const res = await sendAgentMessage(complaintId, "");
-            applyResponseRef.current?.(res);
+            if (!cancelled) applyResponseRef.current?.(res);
           } finally {
-            setThinking(false);
+            if (!cancelled) setThinking(false);
           }
         }
       } catch {}
     }, 8000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [stage, complaintId, setStage, setThinking, setThinkingSteps, applyResponseRef]);
 
   // ── Status fallback: every 10s check for status changes ──────────────────
