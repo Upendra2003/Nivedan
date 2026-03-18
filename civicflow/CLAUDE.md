@@ -123,11 +123,18 @@ routes/complaints.py        POST /complaints/create  — creates doc, returns fu
                             GET  /complaints/<id>     — full doc with timeline
                             POST /complaints/<id>/submit_to_portal
                             POST /complaints/<id>/resubmit
-                            PATCH /complaints/<id>/status
+                            PATCH /complaints/<id>/status  — validates against _VALID_STATUSES
+                            POST /complaints/<id>/upload-doc
+                              Body: { type:"signature"|"supporting", file_base64, filename, mime_type }
+                              Guards: MIME allowlist (415), max 10 docs (400), max 1.2MB b64 (413)
+                              Signature → complaint.signature_b64
+                              Supporting → $push complaint.supporting_docs[]
                             POST /complaints/<id>/chat  — OLD agent chat (Phase 1b, still present)
 routes/agent.py             POST /agent/message  — Phase 6 AI agent endpoint
                               Body: { complaint_id, message }
                               Returns: { reply, action, action_data, thinking_steps }
+                              action values: null|"show_pdf"|"show_buttons"|"status_update"|
+                                             "request_signature"|"request_documents"
 routes/forms.py             GET  /forms/<form_name>   — proxy to mock portal PDF
                             POST /forms/generate      — { form_name, form_data } → { pdf_base64 }
 routes/notifications.py     GET  /notifications/mine
@@ -145,45 +152,48 @@ services/sarvam.py          chat_completion(messages, system_prompt) → str
                             Uses: sarvamai SDK, SarvamAI(api_subscription_key=SARVAM_API_KEY)
                             Model: "sarvam-m"
                             response.choices[0].message.content (may be None → return "")
-                            transcribe_audio / text_to_speech / translate → NotImplementedError
+                            (transcribe_audio / text_to_speech / translate stubs removed — dead code)
 
 services/agent_runner.py    Phase 6 AI agent state machine
-                            States: CHAT → SHOW_BLANK_FORM → COLLECT_FIELDS → PREVIEW → SUBMITTED
+                            States: CHAT → SHOW_BLANK_FORM → COLLECT_FIELDS → COLLECT_DOCS → PREVIEW → SUBMITTED
                             run_agent(complaint_id, user_message, user) → dict
-                            - Loads subcategory from complaint doc → looks up SUBCATEGORY_CONFIG
-                            - Empty message + CHAT state → hardcoded greeting in user's language
-                              (uses cfg["title"] + cfg["authority"] — fully dynamic per subcategory)
                             - CHAT: natural conversation, LLM decides when to ACTION: fetch_form
                             - SHOW_BLANK_FORM: shows blank PDF, waits for "fill it"
                             - COLLECT_FIELDS: LLM extracts fields via EXTRACTED: {...} at end
-                            - All fields collected → generate_pdf_b64(cfg["form_name"]) → ACTION: fill_form
+                            - All fields collected → ACTION: fill_form → transitions to COLLECT_DOCS
+                            - COLLECT_DOCS: two sub-stages:
+                                docs_stage="signature" → shows signature_request card
+                                  advances when complaint.signature_b64 set OR user says "skip"
+                                docs_stage="documents" → shows document_upload_request card
+                                  advances when user says "done"/"finish"/"generate"/"proceed"
+                                On advance: regenerates PDF with signature+docs → PREVIEW
                             - PREVIEW: shows filled PDF, waits for confirm → ACTION: submit
                             - SUBMITTED: submits to portal, updates DB, returns status_update
                             LLM output format (always ends with):
                               EXTRACTED: {"field_key": "value"}
                               ACTION: none|fetch_form|collect_fields|fill_form|submit
+                            Guards: ACTION:submit outside PREVIEW → forced to fill_form first
                             _strip_think(): removes <think>...</think> AND unclosed <think> tags
-                              (Sarvam-m emits chain-of-thought — must strip before sending to client)
                             Auto-prefills complainant_name from user.name
-
-                            SUBCATEGORY_CONFIG keys (each has title, authority, issue, form_name, fields):
-                              salary_not_paid, wrongful_termination, workplace_harassment,
+                            SUBCATEGORY_CONFIG: salary_not_paid (13 fields incl. nature_of_business,
+                              designation, complainant_email), wrongful_termination, workplace_harassment,
                               fir_not_registered, police_misconduct, defective_product, online_scam
                             DEFAULT_CONFIG → generic fallback for any unknown subcategory
-                            _config(subcategory) → returns matching config or DEFAULT_CONFIG
 
 services/form_handler.py    FIELD_DEFINITIONS for old agent chat (Phase 1b)
                             get_fields, next_missing_field, build_summary, submit_to_portal
-services/pdf_generator.py   generate_salary_complaint(data) → base64 str  ← Phase 7 (professional form)
-                              Header: logo placeholder, centred title/subtitle, ref+date top-right
-                              6 sections: Complainant, Employer, Employment, Steps (checkboxes),
-                              Documents (checkboxes), Declaration + signature line
-                            generate_salary_non_payment_pdf(data) → bytes  (Phase 3, kept for ref)
-                            generate_pdf_b64(form_name, data) → base64 str  ← routes salary to new fn
+services/pdf_generator.py   generate_salary_complaint(data, signature_b64, supporting_docs) → base64 str
+                              6 sections, EXIF-corrected signature embedded at declaration line,
+                              Section 5 checkboxes auto-ticked from uploaded filenames,
+                              image docs appended as new pages, PDF docs merged via pypdf
+                            _orient_image(img_bytes) → bytes  ← Pillow EXIF rotation fix
+                            _detect_doc_type(filename) → str  ← maps filename to checkbox key
+                            _append_signature_and_docs(pdf_bytes, sig, docs) → bytes ← generic fallback
+                            generate_pdf_b64(form_name, data, signature_b64, supporting_docs) → base64 str
                             generate_pdf(category, subcategory, data) → bytes (generic fallback)
 
 pyproject.toml              uv deps: flask, flask-cors, pymongo, pyjwt, fpdf2,
-                            python-dotenv, requests, bcrypt, sarvamai
+                            python-dotenv, requests, bcrypt, sarvamai, pypdf>=4.0, pillow>=10.0
 .env.example                Template — copy to .env and fill in secrets
 ```
 
@@ -222,9 +232,16 @@ app/chat/[category].tsx     AI agent chat screen — param is SUBCATEGORY ID (e.
                               2. POST /agent/message { complaint_id: doc._id, message: "" } → greeting
                               3. Each user turn → POST /agent/message { complaint_id, message }
                             Message types: user | agent | action_buttons | status_update | pdf_card
+                                           | signature_request | document_upload_request | uploaded_file_card
                             pdf_card has label: "blank_form"|"filled_form" — blank hides Submit btn
                             Stage: loading → chatting → confirming → submitted
-                            ThinkingStrip: visible=thinking, steps=thinkingSteps from last response
+                            Two separate loading states:
+                              thinking=true  → AI processing → ThinkingStrip shown
+                              uploading=true → file uploading → inline card feedback (NOT ThinkingStrip)
+                            Auto-scroll: useEffect on messages.length → scrollToEnd after 100ms
+                            handleSignatureUpload() / handleSignatureSkip() / handleDocumentUpload(source)
+                            / handleDocumentsDone() — upload to /complaints/<id>/upload-doc
+                            handleSendRef + applyResponseRef updated every render (stale-closure guard)
 
 components/ThinkingStrip.tsx Phase 6 redesign — Claude-like thinking display
                             Props: { visible: boolean; steps?: string[]; onDone?: () => void }
@@ -233,13 +250,15 @@ components/ThinkingStrip.tsx Phase 6 redesign — Claude-like thinking display
                               with slide-in+fade-in, then hold 1.8s → call onDone
                             - phase: "loading" | "reveal" | "hidden"
 
-components/PdfCard.tsx      Props: filename, pageCount?, onView, onApproveSubmit
+components/ChatMessageRow.tsx All 8 message types rendered here (including new signature_request,
+                            document_upload_request, uploaded_file_card). uploading prop disables
+                            buttons and shows inline status during file upload.
 components/PdfViewer.tsx    Full screen Modal. Web: iframe with data URI. Native: placeholder.
                             Props: visible, filename, pdfBase64, onClose, onApproveSubmit, onRequestChanges
 
-constants/agentSteps.ts     AGENT_STEPS array (used as ThinkingStrip fallback)
 constants/categories.ts     CATEGORIES with findSubcategory(subcategoryId) helper
 constants/theme.ts          darkTheme, lightTheme, useTheme() hook
+                            (dead backward-compat exports removed — only active exports remain)
 
 app/pdf-viewer.tsx          Phase 7 full-screen PDF viewer route (native only)
                             Reads from utils/pdfStore.ts, writes base64→temp file via expo-file-system
@@ -274,7 +293,7 @@ src/main.tsx                Entry — ThemeProvider > AuthProvider > BrowserRout
 src/context/AuthContext.tsx In-memory token (NOT localStorage) — _token in api.ts module
 src/context/ThemeContext.tsx dark: boolean (default true) — applies 'dark' class to <html>
 
-src/services/api.ts         In-memory _token, auto Authorization header
+src/services/api.ts         In-memory _token, auto Authorization header (getToken() removed — dead)
 src/pages/Login.tsx         Tailwind dark/light, floating theme toggle
 src/pages/Register.tsx      Language chip picker
 src/pages/Dashboard.tsx     4 stat cards + case list (ProgressBar) + donut chart + notif feed
@@ -282,6 +301,7 @@ src/pages/CaseDetail.tsx    Timeline (latest first) + rejection panel + document
 src/pages/Notifications.tsx Filter tabs (All/Unread/Status Updates/Rejections) + mark-all-read
 src/components/Layout.tsx   Sidebar + topbar (logo + theme toggle + avatar + sign out)
                             Fetches /notifications/mine for sidebar badge count
+NOTE: CaseCard, NotificationFeed, StatCard, TimelineBar components deleted (dead code — inline in pages)
 
 Tailwind: CDN in index.html — darkMode: 'class', tailwind.config = { darkMode: 'class' }
 Recharts: PieChart for donut chart on dashboard
@@ -335,8 +355,10 @@ db.portal_submissions.deleteMany({})
   title: String,
   status: "pending"|"filed"|"acknowledged"|"under_review"|"next_step"|"resolved"|"failed",
   form_data: Object,         // collected fields — filled by agent
-  agent_state: "CHAT"|"SHOW_BLANK_FORM"|"COLLECT_FIELDS"|"PREVIEW"|"SUBMITTED",
+  agent_state: "CHAT"|"SHOW_BLANK_FORM"|"COLLECT_FIELDS"|"COLLECT_DOCS"|"PREVIEW"|"SUBMITTED"|"REJECTED",
   agent_history: Array,      // [{role, content}] last 40 messages for LLM context
+  signature_b64: String|null,     // handwritten signature (base64)
+  supporting_docs: Array,         // [{filename, file_b64, mime_type}]
   portal_ref_id: String|null,
   rejection_reason: String,
   resubmission_count: Number,
@@ -377,22 +399,26 @@ GET  /complaints/mine     → { complaints, counts }
 GET  /complaints/<id>     → full doc
 POST /complaints/<id>/submit_to_portal  { pdf_base64 }
 POST /complaints/<id>/resubmit          { pdf_base64, changes_summary }
+PATCH /complaints/<id>/status           { status }  (validated against _VALID_STATUSES)
+POST /complaints/<id>/upload-doc        { type, file_base64, filename, mime_type }
 ```
 
 ### Forms / Notifications / Users / Webhook
 ```
 GET  /forms/<form_name>           → blank PDF from portal
 POST /forms/generate              { form_name, form_data } → { pdf_base64 }
-GET  /notifications/mine          → unread notifications
+GET  /notifications/mine          → unread (add ?all=1 for all)
 POST /notifications/read/<id>     → mark read
+POST /notifications/read/all      → mark all read
 POST /users/push_token            { token }
-POST /webhooks/portal             (called by mock portal — no auth)
+POST /webhooks/portal             (called by mock portal — no JWT auth)
 ```
 
-### PDF generator fields (generate_salary_non_payment_pdf)
+### salary_not_paid fields (generate_salary_complaint)
 ```
-complainant_name, employer_name, employer_address, employment_start_date,
-last_paid_date, months_pending, amount_pending, attempts_made, declaration_date
+complainant_name, complainant_address, complainant_phone, complainant_email,
+employer_name, employer_address, nature_of_business, employment_start_date,
+designation, last_paid_date, months_pending, amount_pending, attempts_made
 ```
 
 ---
@@ -440,16 +466,21 @@ const res = await sendAgentMessage(complaintId, userText);
 
 ---
 
-## Agent Design (Phase 6 — IMPLEMENTED)
+## Agent Design (Phase 6+9 — IMPLEMENTED)
 
-Natural conversation → understand problem → blank form → collect fields → filled PDF → submit.
+Natural conversation → understand problem → blank form → collect fields → signature + docs → filled PDF → submit.
 
 ```
 CHAT            Natural conversation in user's language. LLM outputs ACTION: fetch_form when ready.
 SHOW_BLANK_FORM Blank PDF from GET /portal/forms/salary_complaint shown in chat.
                 User says "fill it" → LLM outputs ACTION: collect_fields
 COLLECT_FIELDS  LLM collects fields via EXTRACTED: {...} pattern. Auto-fills complainant_name.
-                When all fields present → Python generates PDF → ACTION: fill_form
+                When all fields present → Python transitions to COLLECT_DOCS
+COLLECT_DOCS    Sub-stage 1 (signature): signature_request card shown.
+                  → advance when complaint.signature_b64 set OR user says "skip"
+                Sub-stage 2 (documents): document_upload_request card shown.
+                  → advance when user says "done"/"finish"/"generate"/"proceed"
+                → PDF regenerated with signature+docs → transitions to PREVIEW
 PREVIEW         Filled PDF shown in chat. User confirms → LLM outputs ACTION: submit
 SUBMITTED       Python calls portal, updates DB, returns action:"status_update"
 ```
@@ -531,10 +562,11 @@ Messages format: `[{"role": "system"|"user"|"assistant", "content": "..."}]`
 - [x] **Phase 6** — AI Agent: Sarvam integration, goal-oriented flow, language support, Claude-like thinking UI
 - [x] **Phase 7** — PDF Form Fill + In-App Viewer (native react-native-pdf, requires dev build)
 - [x] **Phase 8** — Notifications Loop (Expo push + polling fallback + in-app banner + drawer)
-- [ ] **Phase 9** — Polish — Multilingual UI labels, final animations
-- [ ] **Phase 10** — Demo Prep + Final Wiring
+- [x] **Phase 9** — Signature + document upload flow; PDF embedding; code review fixes; dead code cleanup
+- [ ] **Phase 10** — Polish — Multilingual UI labels, final animations
+- [ ] **Phase 11** — Demo Prep + Final Wiring
 
-### Next task: Phase 9
+### Next task: Phase 10
 Polish — multilingual UI labels, final animations.
 
 ### Phase 8 notes
@@ -575,6 +607,28 @@ Polish — multilingual UI labels, final animations.
   - 6 sections: Complainant, Employer, Employment, Steps Taken (checkboxes), Documents (checkboxes), Declaration
   - Now used by `generate_pdf_b64()` for all salary forms
 
+### Phase 9 notes
+- New agent state: `COLLECT_DOCS` (between COLLECT_FIELDS and PREVIEW)
+  - Two sub-stages gated on DB state: `docs_stage="signature"` then `docs_stage="documents"`
+  - Server guards prevent LLM from bypassing the state
+- New endpoint: `POST /complaints/<id>/upload-doc`
+  - Server-side MIME allowlist, 10-doc cap, 1.2MB size limit
+  - Signature → `complaint.signature_b64`; docs → `complaint.supporting_docs[]`
+- PDF changes: `generate_salary_complaint(data, signature_b64, supporting_docs)`
+  - EXIF-corrected signature embedded at declaration line (size-guarded at 1.2MB)
+  - Section 5 checkboxes auto-ticked from uploaded filenames (`_detect_doc_type`)
+  - Image docs appended as pages; PDF docs merged via pypdf
+  - `_append_signature_and_docs()` for non-salary form fallback
+  - New deps: `pypdf>=4.0`, `pillow>=10.0`
+- Mobile: separated `uploading` state from `thinking` — different UX for file upload vs AI processing
+- Code review fixes: `debug=False` in prod, WEBHOOK_SECRET startup warning,
+  status PATCH validated against allowlist, `cancelled` flag in polling hook,
+  `__DEV__` logging in upload catch blocks
+- Dead code removed: AgentMessage.tsx, PdfCard.tsx, agentSteps.ts, web CaseCard/NotificationFeed/
+  StatCard/TimelineBar, sarvam.py stubs, theme.ts backward-compat exports, web api.ts getToken()
+- Documentation: `CivicFlow_Technical_Documentation.docx` generated at civicflow root
+  (script: `generate_docs.py`, run: `uv run --with python-docx python generate_docs.py`)
+
 ---
 
 ## Bugs Fixed (do not re-introduce)
@@ -596,3 +650,10 @@ Polish — multilingual UI labels, final animations.
 | `.env` key loaded with quotes (`"sk_..."`) | Key pasted with surrounding quotes in `.env.example`, copied as-is | Remove quotes — dotenv value should be bare: `SARVAM_API_KEY=sk_...` |
 | `.env` file missing | Only `.env.example` existed; `load_dotenv()` reads `.env` not `.env.example` | Copy: `cp .env.example .env` |
 | All subcategories show salary greeting | Greeting and fields hardcoded for salary_not_paid only | Added `SUBCATEGORY_CONFIG` dict; agent loads `subcategory` from complaint doc and uses matching config |
+| Upload buttons missing in UI | `onSignatureUpload` etc. declared in TypeScript interface but never destructured | Added all 4 callbacks to destructuring in ChatMessageRow |
+| Agent skips COLLECT_DOCS/PREVIEW | LLM outputs `ACTION: submit` directly from COLLECT_FIELDS | Server-side guard: `if llm_action=="submit" and state!="PREVIEW": llm_action="fill_form"` |
+| Thinking strip shows during file upload | `setThinking(true)` called before picker opens | Separated `uploading` state from `thinking`; picker opens before `setUploading(true)` |
+| Signature rotated 90° in PDF | Phone EXIF orientation tag ignored by fpdf2 | `_orient_image()` using `PIL.ImageOps.exif_transpose()` |
+| PREVIEW state ignores field corrections | Extracted values not applied when `state == "PREVIEW"` | `if val and (key in valid_keys or state == "PREVIEW")` |
+| `nature_of_business`/`designation` missing from form | Fields rendered in PDF but never collected by agent | Added both to `salary_not_paid` fields in `SUBCATEGORY_CONFIG` |
+| `clearInterval` inside async callback | Race condition: cancelled effect still fires state updates | Added `cancelled` flag; interval cleanup: `return () => { cancelled=true; clearInterval(interval) }` |

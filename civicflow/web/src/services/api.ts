@@ -8,9 +8,6 @@ export function setToken(t: string | null): void {
   _token = t;
 }
 
-export function getToken(): string | null {
-  return _token;
-}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
