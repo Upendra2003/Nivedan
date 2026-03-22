@@ -203,7 +203,7 @@ export default function CaseDetail() {
               </p>
             )}
             <div className="mt-2 p-3 bg-red-100 dark:bg-red-900/30 rounded-lg text-xs text-red-500 dark:text-red-300">
-              📱 To resubmit, open the CivicFlow mobile app, go to My Cases, and tap this complaint.
+              To resubmit, open the Nivedan mobile app, go to My Cases, and tap this complaint.
             </div>
           </div>
         )}

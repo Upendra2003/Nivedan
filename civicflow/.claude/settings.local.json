@@ -32,7 +32,9 @@
       "Bash(grep -E \"mine|\\\\/complaints\\\\/$|\\\\/complaints\\\\/chat\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(k\\) for k in d.get\\(''''dependencies'''',{}\\)]\")",
       "Bash(grep -rn expo-haptics /c/Upendra/IITT/ISE/civicflow/mobile/app/ --include=*.tsx)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(ls:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

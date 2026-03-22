@@ -47,10 +47,9 @@ const MoonIcon = () => (
 interface NavItem { label: string; path: string; icon: React.ReactNode; }
 
 const NAV: NavItem[] = [
-  { label: "Dashboard", path: "/dashboard", icon: <HomeIcon /> },
-  { label: "My Cases",  path: "/dashboard", icon: <FolderIcon /> },
+  { label: "Dashboard",     path: "/dashboard",     icon: <HomeIcon /> },
   { label: "Notifications", path: "/notifications", icon: <BellIcon /> },
-  { label: "Profile",   path: "/profile",   icon: <UserIcon /> },
+  { label: "Profile",       path: "/profile",       icon: <UserIcon /> },
 ];
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -76,12 +75,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     .slice(0, 2);
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
       {/* ── Topbar ─────────────────────────────────────────────────────── */}
       <header className="h-14 flex-shrink-0 flex items-center justify-between px-6 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 z-10">
-        <span className="text-xl font-extrabold tracking-tight text-blue-600 dark:text-blue-400">
-          CivicFlow
-        </span>
+        <img src="/LOGO.png" alt="Nivedan" className="h-8 w-auto object-contain" />
 
         <div className="flex items-center gap-3">
           {/* Dark/light toggle */}
@@ -117,7 +114,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <aside className="w-56 flex-shrink-0 flex flex-col bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-y-auto">
           <nav className="flex flex-col gap-1 p-3 flex-1">
             {NAV.map((item) => {
-              const active = location.pathname === item.path && item.path !== "/profile";
+              const active = location.pathname === item.path || location.pathname.startsWith(item.path + "/");
               return (
                 <Link
                   key={item.label}
@@ -142,7 +139,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-white dark:bg-slate-900">
           {children}
         </main>
       </div>

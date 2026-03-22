@@ -10,6 +10,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import CaseDetail from "./pages/CaseDetail";
 import Notifications from "./pages/Notifications";
+import Profile from "./pages/Profile";
 import "./index.css";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,10 @@ createRoot(document.getElementById("root")!).render(
             <Route
               path="/notifications"
               element={<PrivateRoute><Notifications /></PrivateRoute>}
+            />
+            <Route
+              path="/profile"
+              element={<PrivateRoute><Profile /></PrivateRoute>}
             />
           </Routes>
         </BrowserRouter>

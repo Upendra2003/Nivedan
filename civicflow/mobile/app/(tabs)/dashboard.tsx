@@ -118,7 +118,12 @@ export default function DashboardScreen() {
               setComplaints((prev) => prev.filter((c) => c._id !== id));
             } catch (e: any) {
               let msg = t("couldNotDelete");
-              try { msg = JSON.parse(e.message).error; } catch {}
+              try {
+                const parsed = JSON.parse(e.message);
+                msg = parsed.error ?? e.message;
+              } catch {
+                msg = e.message ?? t("couldNotDelete");
+              }
               Alert.alert(t("errorTitle"), msg);
             }
           },

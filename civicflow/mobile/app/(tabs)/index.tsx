@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
@@ -60,14 +60,15 @@ export default function HomeScreen() {
   const fabSheetAnim = useRef(new Animated.Value(0)).current;
   const menuAnim     = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.authedGet<Complaint[]>("/complaints/");
-        setRecentCases(data.slice(0, 5));
-      } catch {}
-    })();
+  const loadRecentCases = useCallback(async () => {
+    try {
+      const data = await api.authedGet<Complaint[]>("/complaints/");
+      setRecentCases(data.slice(0, 5));
+    } catch {}
   }, []);
+
+  // Reload every time this tab comes into focus
+  useFocusEffect(useCallback(() => { loadRecentCases(); }, [loadRecentCases]));
 
   // ── FAB category picker ──────────────────────────────────────────────────
   const openFabSheet = useCallback(() => {
@@ -110,9 +111,10 @@ export default function HomeScreen() {
 
   // ── Hamburger menu ───────────────────────────────────────────────────────
   const openMenu = useCallback(() => {
+    loadRecentCases(); // always fetch fresh data when opening the drawer
     setMenuVisible(true);
     Animated.timing(menuAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-  }, [menuAnim]);
+  }, [menuAnim, loadRecentCases]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(menuAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {

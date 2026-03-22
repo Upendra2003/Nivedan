@@ -4,14 +4,14 @@ interface ThemeCtx { dark: boolean; toggle: () => void; }
 const ThemeContext = createContext<ThemeCtx>({ dark: true, toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(true); // default: dark
+  const [dark, setDark] = useState(false); // default: light (white)
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
-  // Apply dark class immediately on mount
-  useEffect(() => { document.documentElement.classList.add("dark"); }, []);
+  // Remove dark class on mount so default is light
+  useEffect(() => { document.documentElement.classList.remove("dark"); }, []);
 
   return (
     <ThemeContext.Provider value={{ dark, toggle: () => setDark((d) => !d) }}>

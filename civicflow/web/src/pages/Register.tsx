@@ -54,204 +54,129 @@ export default function Register() {
   };
 
   return (
-    <div style={s.root}>
-      <div style={s.card}>
-        <h1 style={s.logo}>CivicFlow</h1>
-        <p style={s.tagline}>Your rights, in your language.</p>
+    <div className="auth-page flex bg-white dark:bg-slate-900 transition-colors">
+      {/* Left — Illustration */}
+      <div className="hidden lg:flex flex-1 relative bg-gradient-to-br from-purple-50 to-violet-100 dark:from-slate-800 dark:to-slate-900 items-center justify-center overflow-hidden">
+        <div className="absolute top-0 left-0 w-64 h-64 bg-violet-200/40 dark:bg-violet-900/20 rounded-full -translate-y-1/3 -translate-x-1/3" />
+        <div className="absolute bottom-0 right-0 w-80 h-80 bg-purple-200/30 dark:bg-purple-900/20 rounded-full translate-y-1/3 translate-x-1/3" />
 
-        <h2 style={s.title}>Create account</h2>
-
-        {error && <div style={s.error}>{error}</div>}
-
-        <form onSubmit={handleSubmit} noValidate>
-          <label style={s.label}>Full name</label>
-          <input
-            style={s.input}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ramesh Kumar"
-            autoComplete="name"
-            required
+        <div className="relative z-10 flex items-center justify-center px-12">
+          <img
+            src="/RegisterPagePhoto.png"
+            alt="Register illustration"
+            className="object-contain drop-shadow-2xl"
+            style={{ height: "40vh", maxWidth: "100%", animation: "float 3.5s ease-in-out infinite" }}
           />
+        </div>
+      </div>
 
-          <label style={s.label}>Email</label>
-          <input
-            style={s.input}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-          />
+      {/* Right — Form */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 lg:p-16 bg-slate-50 dark:bg-slate-900 overflow-y-auto">
+        {/* Card box around the form */}
+        <div className="w-full max-w-[420px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-lg p-10">
+          <img src="/LOGO.png" alt="Nivedan" className="h-10 w-auto object-contain mb-6" />
 
-          <label style={s.label}>Phone number</label>
-          <input
-            style={s.input}
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+91 98765 43210"
-            autoComplete="tel"
-            required
-          />
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-7">
+            Create account
+          </h2>
 
-          <label style={s.label}>Password</label>
-          <input
-            style={s.input}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete="new-password"
-            required
-          />
+          {error && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-600 dark:text-red-400 text-sm">
+              {error}
+            </div>
+          )}
 
-          <label style={s.label}>Preferred language</label>
-          <div style={s.langRow}>
-            {LANGUAGES.map((l) => {
-              const selected = l.code === lang;
-              return (
-                <button
-                  key={l.code}
-                  type="button"
-                  onClick={() => setLang(l.code)}
-                  style={{
-                    ...s.langChip,
-                    backgroundColor: selected ? "#7c3aed" : "#f1f5f9",
-                    color: selected ? "#fff" : "#64748b",
-                    border: `1px solid ${selected ? "#7c3aed" : "#e2e8f0"}`,
-                    fontWeight: selected ? 600 : 400,
-                  }}
-                >
-                  {l.label}
-                </button>
-              );
-            })}
-          </div>
+          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Full name</label>
+              <input
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm transition-colors"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ramesh Kumar"
+                autoComplete="name"
+                required
+              />
+            </div>
 
-          <button
-            style={{ ...s.btn, ...(loading ? s.btnDisabled : {}) }}
-            type="submit"
-            disabled={loading}
-          >
-            {loading ? "Creating account…" : "Create account"}
-          </button>
-        </form>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Email</label>
+              <input
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm transition-colors"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+              />
+            </div>
 
-        <p style={s.footer}>
-          Already have an account?{" "}
-          <Link to="/login" style={s.link}>Sign in</Link>
-        </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Phone number</label>
+              <input
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm transition-colors"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                autoComplete="tel"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Password</label>
+              <input
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm transition-colors"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Preferred language</label>
+              <div className="flex flex-wrap gap-2">
+                {LANGUAGES.map((l) => {
+                  const selected = l.code === lang;
+                  return (
+                    <button
+                      key={l.code}
+                      type="button"
+                      onClick={() => setLang(l.code)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        selected
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:border-purple-400"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 mt-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors text-sm shadow-sm"
+            >
+              {loading ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+
+          <p className="mt-5 text-center text-sm text-slate-400">
+            Already have an account?{" "}
+            <Link to="/login" className="text-purple-600 font-semibold hover:underline">Sign in</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f8fafc",
-    padding: "2rem 1rem",
-  },
-  card: {
-    width: "100%",
-    maxWidth: 440,
-    backgroundColor: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 16,
-    padding: "2rem 2.5rem",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
-  },
-  logo: {
-    fontSize: 28,
-    fontWeight: 800,
-    color: "#7c3aed",
-    margin: "0 0 4px",
-    letterSpacing: "-0.5px",
-  },
-  tagline: {
-    fontSize: 13,
-    color: "#94a3b8",
-    margin: "0 0 28px",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: "#0f172a",
-    margin: "0 0 20px",
-  },
-  error: {
-    backgroundColor: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#dc2626",
-    borderRadius: 8,
-    padding: "10px 14px",
-    fontSize: 13,
-    marginBottom: 16,
-  },
-  label: {
-    display: "block",
-    fontSize: 13,
-    fontWeight: 500,
-    color: "#64748b",
-    marginBottom: 6,
-  },
-  input: {
-    display: "block",
-    width: "100%",
-    fontSize: 15,
-    padding: "11px 14px",
-    borderRadius: 10,
-    border: "1px solid #e2e8f0",
-    backgroundColor: "#f8fafc",
-    color: "#0f172a",
-    outline: "none",
-    marginBottom: 16,
-    boxSizing: "border-box",
-  },
-  langRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 20,
-  },
-  langChip: {
-    borderRadius: 20,
-    padding: "6px 14px",
-    fontSize: 13,
-    cursor: "pointer",
-  },
-  btn: {
-    display: "block",
-    width: "100%",
-    padding: "13px",
-    marginTop: 4,
-    backgroundColor: "#7c3aed",
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: 700,
-    border: "none",
-    borderRadius: 10,
-    cursor: "pointer",
-  },
-  btnDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
-  footer: {
-    marginTop: 20,
-    fontSize: 13,
-    color: "#94a3b8",
-    textAlign: "center",
-  },
-  link: {
-    color: "#7c3aed",
-    fontWeight: 600,
-    textDecoration: "none",
-  },
-};

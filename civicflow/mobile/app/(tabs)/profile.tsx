@@ -9,6 +9,7 @@ import {
   View,
   Alert,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
@@ -68,16 +69,21 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
         {/* ── Hero card ─────────────────────────────────────────────────── */}
-        <View style={[s.heroCard, { backgroundColor: theme.primary }]}>
-          <View style={[s.avatar, { backgroundColor: theme.secondary }]}>
+        <LinearGradient
+          colors={["#5B4EC9", "#9B72E8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={s.heroCard}
+        >
+          <View style={s.avatar}>
             <Text style={s.avatarText}>{initials}</Text>
           </View>
           <Text style={s.heroName}>{user.name}</Text>
           <Text style={s.heroEmail}>{user.email}</Text>
           <View style={s.heroLogo}>
-            <Text style={s.heroLogoText}>Team Nivedan</Text>
+            <Text style={s.heroLogoText}>TEAM NIVEDAN</Text>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* ── Language picker (inline, always visible) ──────────────────── */}
         <Text style={[s.sectionLabel, { color: theme.subtext }]}>{t("selectLanguage")}</Text>
@@ -241,21 +247,24 @@ const s = StyleSheet.create({
     marginBottom: 28,
   },
   avatar: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 72, height: 72, borderRadius: 36,
     alignItems: "center", justifyContent: "center",
     marginBottom: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
-  avatarText:   { fontSize: 28, fontWeight: "800", color: "#fff" },
+  avatarText:   { fontSize: 26, fontWeight: "800", color: "#fff" },
   heroName:     { fontSize: 22, fontWeight: "700", color: "#fff", marginBottom: 4 },
-  heroEmail:    { fontSize: 13, color: "rgba(255,255,255,0.7)" },
-  heroLogo:     { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20, opacity: 0.6 },
+  heroEmail:    { fontSize: 13, color: "rgba(255,255,255,0.72)" },
+  heroLogo: {
+    marginTop: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+    borderRadius: 100,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.55)",
+  },
   heroLogoImg:  { width: 18, height: 18 },
-  heroLogoText: { color: "#fff", fontSize: 13, fontWeight: "700", letterSpacing: 0.5 },
+  heroLogoText: { color: "#fff", fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
 
   // Sections
   sectionLabel: {

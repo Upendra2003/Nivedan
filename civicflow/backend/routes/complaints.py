@@ -278,18 +278,31 @@ def delete_complaint(complaint_id: str):
     except Exception:
         return jsonify({"error": "invalid id"}), 400
 
-    complaint = db.complaints.find_one({"_id": oid, "user_id": g.user["_id"]})
-    if not complaint:
-        return jsonify({"error": "not found"}), 404
+    try:
+        user_oid = g.user["_id"]
+        # Match both ObjectId and legacy string user_id formats
+        complaint = db.complaints.find_one({
+            "_id": oid,
+            "$or": [{"user_id": user_oid}, {"user_id": str(user_oid)}],
+        })
+        if not complaint:
+            return jsonify({"error": "complaint not found"}), 404
 
-    if complaint.get("status") != "pending":
-        return jsonify({"error": "only pending complaints can be deleted"}), 403
+        if complaint.get("status") != "pending":
+            return jsonify({"error": "only pending complaints can be deleted"}), 403
 
-    # Include status guard in the atomic delete to close the TOCTOU window
-    result = db.complaints.delete_one({"_id": oid, "user_id": g.user["_id"], "status": "pending"})
-    if result.deleted_count == 0:
-        return jsonify({"error": "complaint could not be deleted — status may have changed"}), 409
-    return jsonify({"ok": True}), 200
+        result = db.complaints.delete_one({
+            "_id": oid,
+            "$or": [{"user_id": user_oid}, {"user_id": str(user_oid)}],
+            "status": "pending",
+        })
+        if result.deleted_count == 0:
+            return jsonify({"error": "complaint could not be deleted — status may have changed"}), 409
+
+        return jsonify({"ok": True}), 200
+
+    except Exception as exc:
+        return jsonify({"error": f"server error: {exc}"}), 500
 
 
 # ---------------------------------------------------------------------------
