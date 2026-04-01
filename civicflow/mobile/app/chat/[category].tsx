@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -14,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../services/api";
-import { sendAgentMessage, AgentResponse } from "../../services/agent";
+import { sendAgentMessage, getThinkingSteps, AgentResponse } from "../../services/agent";
 import { findSubcategory } from "../../constants/categories";
 import { useTheme } from "../../constants/theme";
 import ThinkingStrip from "../../components/ThinkingStrip";
@@ -55,6 +56,8 @@ export default function ChatScreen() {
     visible: boolean; filename: string; base64?: string;
   }>({ visible: false, filename: "" });
 
+  const [kbOffset, setKbOffset] = useState(0);
+
   const listRef          = useRef<FlatList>(null);
   const handleSendRef    = useRef<((text?: string) => Promise<void>) | undefined>(undefined);
   const applyResponseRef = useRef<((res: AgentResponse) => void) | undefined>(undefined);
@@ -69,7 +72,6 @@ export default function ChatScreen() {
   }, [pushMsg]);
 
   const applyResponse = useCallback((res: AgentResponse) => {
-    if (res.thinking_steps?.length) setThinkingSteps([...res.thinking_steps]);
     if (res.reply) pushMsg({ id: uid(), type: "agent", text: res.reply });
 
     switch (res.action) {
@@ -116,6 +118,7 @@ export default function ChatScreen() {
 
     (async () => {
       setThinking(true);
+      const initStart = Date.now();
       try {
         const doc = await api.authedPost<{ _id: string }>(
           "/complaints/create",
@@ -129,21 +132,34 @@ export default function ChatScreen() {
 
         const greet = await sendAgentMessage(cid, "");
         if (cancelled) return;
+
+        // Ensure ThinkingStrip shows for at least 2s so user sees the loading state
+        const elapsed = Date.now() - initStart;
+        if (elapsed < 2000) {
+          await new Promise<void>((r) => setTimeout(r, 2000 - elapsed));
+        }
+        if (cancelled) return;
+
         applyResponseRef.current?.(greet);
         setStage("chatting");
+
+        // Defer setThinking(false) by one frame so the greeting renders BEFORE
+        // ThinkingStrip hides (avoids React 18 batching them into the same commit)
+        requestAnimationFrame(() => { if (!cancelled) setThinking(false); });
       } catch (e: any) {
         if (cancelled) return;
         let msg = "Could not start. Please go back and try again.";
         try { msg = JSON.parse(e.message).error ?? msg; } catch {}
         pushMsg({ id: uid(), type: "agent", text: msg });
         setStage("chatting");
-      } finally {
-        if (!cancelled) setThinking(false);
+        setThinking(false);
       }
     })();
 
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const MIN_THINKING_MS = 3500;
 
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -155,9 +171,32 @@ export default function ChatScreen() {
     setThinkingSteps(undefined);
     setThinking(true);
 
+    const startTime = Date.now();
+
     try {
-      const res = await sendAgentMessage(complaintId, text);
-      applyResponse(res);
+      // Run thinking-steps generation and actual agent response in parallel.
+      // thinking call is fire-and-forget-safe — failure falls back to empty steps.
+      const [thinkingRes, agentRes] = await Promise.all([
+        getThinkingSteps(complaintId, text).catch(() => ({ steps: [] })),
+        sendAgentMessage(complaintId, text),
+      ]);
+
+      // Show model-generated steps in ThinkingStrip as soon as they arrive
+      if (thinkingRes.steps.length > 0) {
+        setThinkingSteps(thinkingRes.steps);
+      }
+
+      // Hold the actual response until the minimum thinking display time has passed
+      const elapsed = Date.now() - startTime;
+      if (elapsed < MIN_THINKING_MS) {
+        await new Promise<void>((resolve) => setTimeout(resolve, MIN_THINKING_MS - elapsed));
+      }
+
+      // Persist steps as a collapsible card in the chat history, then reveal response
+      if (thinkingRes.steps.length > 0) {
+        pushMsg({ id: uid(), type: "thinking_summary", steps: thinkingRes.steps });
+      }
+      applyResponse(agentRes);
     } catch (e: any) {
       let msg = "Could not reach the server. Check your connection.";
       try { msg = JSON.parse(e.message).error ?? msg; } catch {}
@@ -290,11 +329,20 @@ export default function ChatScreen() {
   }, [messages.length]);
 
   useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () => {
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      // On Android + edge-to-edge, KAV "padding" mode needs to know how much
+      // the keyboard overlaps the safe-area so we can subtract insets.bottom.
+      // We store the raw keyboard height and pass it as keyboardVerticalOffset.
+      if (Platform.OS === "android") {
+        setKbOffset(e.endCoordinates.height);
+      }
       setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }),  400);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }),  300);
     });
-    return () => show.remove();
+    const hide = Keyboard.addListener("keyboardDidHide", () => {
+      if (Platform.OS === "android") setKbOffset(0);
+    });
+    return () => { show.remove(); hide.remove(); };
   }, []);
 
   if (!resolved) {
@@ -309,7 +357,9 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.root, { backgroundColor: theme.background }]}>
+    // backgroundColor: theme.surface so the bottom gesture area shows the same
+    // white as the input bar (no lavender gap at the bottom of the screen)
+    <SafeAreaView style={[s.root, { backgroundColor: theme.surface }]}>
       {/* ── Header ─────────────────────────────────────────────────── */}
       <View style={[s.header, { backgroundColor: theme.primary }]}>
         <TouchableOpacity
@@ -334,8 +384,16 @@ export default function ChatScreen() {
       </View>
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
+        style={[
+          { flex: 1, backgroundColor: theme.background },
+          // On Android, we drive the offset ourselves via keyboard listeners
+          // so KAV is effectively a no-op (behavior undefined = transparent wrapper).
+          // This avoids the "stuck in elevated position" bug with edge-to-edge + new arch.
+          Platform.OS === "android" && kbOffset > 0
+            ? { paddingBottom: kbOffset - insets.bottom }
+            : undefined,
+        ]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <FlatList
@@ -345,8 +403,16 @@ export default function ChatScreen() {
           contentContainerStyle={s.messageList}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
+          ListFooterComponent={
+            <ThinkingStrip
+              visible={thinking}
+              steps={thinkingSteps}
+              onDone={() => setThinkingSteps(undefined)}
+            />
+          }
           renderItem={({ item }) => (
             <ChatMessageRow
               msg={item}
@@ -376,12 +442,6 @@ export default function ChatScreen() {
         />
 
         <View>
-          <ThinkingStrip
-            visible={thinking}
-            steps={thinkingSteps}
-            onDone={() => setThinkingSteps(undefined)}
-          />
-
           {stage !== "submitted" && (
             <View
               style={[
@@ -389,11 +449,26 @@ export default function ChatScreen() {
                 {
                   backgroundColor: theme.surface,
                   borderTopColor: theme.surfaceContainerHigh,
-                  paddingBottom: Math.max(insets.bottom, 12),
+                  paddingBottom: 12,
                 },
               ]}
             >
               <View style={s.inputRow}>
+                {/* Voice input button */}
+                <TouchableOpacity
+                  style={[s.micBtn, { backgroundColor: theme.surfaceContainerHigh }]}
+                  onPress={() =>
+                    Alert.alert(
+                      "Voice Input",
+                      "Speak your message — voice recognition coming soon.",
+                      [{ text: "OK" }]
+                    )
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="mic-outline" size={20} color={theme.subtext} />
+                </TouchableOpacity>
+
                 <TextInput
                   style={[
                     s.textInput,
@@ -405,17 +480,18 @@ export default function ChatScreen() {
                   ]}
                   value={input}
                   onChangeText={setInput}
-                  placeholder={stage === "confirming" ? "Or type your reply here…" : "Type your message…"}
+                  placeholder={stage === "confirming" ? "Or type your reply here…" : "Type your response…"}
                   placeholderTextColor={theme.outline}
                   onSubmitEditing={() => handleSend()}
                   returnKeyType="send"
                   editable={!thinking && stage !== "loading"}
                   multiline
                 />
+
                 <TouchableOpacity
                   style={[
                     s.sendBtn,
-                    { backgroundColor: theme.secondary, opacity: thinking || !input.trim() ? 0.45 : 1 },
+                    { backgroundColor: theme.primary, opacity: thinking || !input.trim() ? 0.4 : 1 },
                   ]}
                   onPress={() => handleSend()}
                   disabled={thinking || !input.trim()}
@@ -494,11 +570,20 @@ const s = StyleSheet.create({
     fontSize: 15,
     maxHeight: 100,
   },
+  micBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   sendBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
 });

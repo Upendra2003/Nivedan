@@ -382,3 +382,8 @@ text = response.choices[0].message.content or ""
 - **Profile hero card**: `LinearGradient` from `expo-linear-gradient` — `#5B4EC9 → #9B72E8` left-to-right; translucent avatar circle `rgba(255,255,255,0.22)`; outlined "TEAM NIVEDAN" pill
 - **Hamburger drawer real-time**: `useFocusEffect` + refresh on `openMenu` — recent cases always reflect deletions immediately
 - **Delete bug fixed**: backend uses `$or` for ObjectId+string user_id; global JSON error handlers prevent HTML 500 responses; mobile shows actual server error instead of generic fallback
+Add under a ## Workflow Rules section at the top of CLAUDE.md\n\nAfter making significant changes or completing a project phase, always update CLAUDE.md and related documentation without being asked.
+Add under a ## UI/Design Guidelines section\n\nWhen working on UI/design tasks, confirm the exact visual reference (light/dark mode, icon library, color scheme) before making bulk changes. Show a summary of planned changes first.
+Add under a ## General Rules section\n\nAlways check for existing config files (.mcp.json, .env, settings.json) in the project before asking the user or making assumptions about configuration.
+Add under a ## Testing & Analysis section\n\nWhen running code analysis tools (vulture, linters, tests), exclude virtual environments (.venv, node_modules) and build directories by default.
+Add under a ## Platform Notes section\n\nFor Windows development: handle Unicode/encoding issues proactively (use cp1252-safe characters), use os.path for path resolution, and account for Windows-specific quirks (Qt threading, ffmpeg dependencies).

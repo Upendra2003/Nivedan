@@ -3,7 +3,7 @@
  * Renders a single message in the AI chat screen.
  * Design: Nivedan / Sovereign Ledger — Navy + Saffron palette.
  */
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../constants/theme";
@@ -13,6 +13,7 @@ import { useTheme } from "../constants/theme";
 export type Message =
   | { id: string; type: "user"; text: string }
   | { id: string; type: "agent"; text: string }
+  | { id: string; type: "thinking_summary"; steps: string[] }
   | { id: string; type: "action_buttons"; buttons: string[] }
   | { id: string; type: "status_update"; status: string; label: string }
   | { id: string; type: "pdf_card"; filename: string; pdfBase64?: string; label?: string }
@@ -264,9 +265,63 @@ export default function ChatMessageRow({
         </View>
       );
 
+    // ── Thinking summary card (collapsible, persists in chat) ──────────────
+    case "thinking_summary":
+      return <ThinkingSummaryCard steps={msg.steps} theme={theme} />;
+
     default:
       return null;
   }
+}
+
+// ── ThinkingSummaryCard ────────────────────────────────────────────────────────
+
+function ThinkingSummaryCard({
+  steps,
+  theme,
+}: {
+  steps: string[];
+  theme: ReturnType<typeof useTheme>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => setExpanded((e) => !e)}
+      style={[s.thinkCard, { backgroundColor: theme.primaryContainer, borderColor: theme.outlineVariant }]}
+    >
+      {/* Header row */}
+      <View style={s.thinkHeader}>
+        <View style={[s.thinkIconWrap, { backgroundColor: theme.primary }]}>
+          <Ionicons name="hardware-chip-outline" size={11} color="#fff" />
+        </View>
+        <Text style={[s.thinkTitle, { color: theme.onPrimaryContainer }]}>
+          Thought process
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Ionicons
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={14}
+          color={theme.onPrimaryContainer}
+        />
+      </View>
+
+      {/* Steps — shown when expanded */}
+      {expanded && (
+        <View style={s.thinkSteps}>
+          {steps.map((step, i) => (
+            <View key={i} style={s.thinkStepRow}>
+              <View style={[s.thinkStepDot, { backgroundColor: theme.primary }]} />
+              <Text style={[s.thinkStepText, { color: theme.onPrimaryContainer }]}>
+                {step}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -301,6 +356,27 @@ const s = StyleSheet.create({
     elevation: 1,
   },
   agentText: { fontSize: 15, lineHeight: 22 },
+
+  // Thinking summary card
+  thinkCard: {
+    alignSelf: "flex-start",
+    maxWidth: "84%",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  thinkHeader:  { flexDirection: "row", alignItems: "center", gap: 7 },
+  thinkIconWrap: {
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+  },
+  thinkTitle:   { fontSize: 12, fontWeight: "600" },
+  thinkSteps:   { gap: 6, paddingLeft: 2 },
+  thinkStepRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
+  thinkStepDot: { width: 4, height: 4, borderRadius: 2, marginTop: 7, flexShrink: 0 },
+  thinkStepText:{ fontSize: 12, lineHeight: 18, flex: 1 },
 
   // Action buttons
   actionRowWrap: { flexDirection: "row", gap: 10, marginTop: 4, flexWrap: "wrap" },

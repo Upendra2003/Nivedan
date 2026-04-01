@@ -14,11 +14,25 @@ export interface AgentResponse {
   thinking_steps?: string[];
 }
 
+export interface ThinkingResponse {
+  steps: string[];
+}
+
 export async function sendAgentMessage(
   complaintId: string,
   message: string
 ): Promise<AgentResponse> {
   return api.authedPost<AgentResponse>("/agent/message", {
+    complaint_id: complaintId,
+    message,
+  });
+}
+
+export async function getThinkingSteps(
+  complaintId: string,
+  message: string
+): Promise<ThinkingResponse> {
+  return api.authedPost<ThinkingResponse>("/agent/thinking", {
     complaint_id: complaintId,
     message,
   });
