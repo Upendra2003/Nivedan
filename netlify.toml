@@ -1,0 +1,17 @@
+[build]
+  # This tells Netlify to look inside your project folder
+  base = "civicflow/web"
+  # This is the command to build your site
+  command = "npm run build"
+  # This is where the built files are located (relative to the base)
+  publish = "dist"
+
+  # Optional: Set a specific Node version to avoid version mismatches
+  [build.environment]
+    NODE_VERSION = "18"
+
+# This fixes the 404 errors you might get when refreshing pages (SPA routing)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
