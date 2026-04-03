@@ -14,7 +14,10 @@
       "Bash(ipconfig:*)",
       "Bash(npx tsc:*)",
       "Bash(npm uninstall:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Read(//c/Users/upend/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/.claude/skills/ui-ux-pro-max/**)",
+      "Bash(python scripts/search.py \"civic legal AI assistant government India mobile app\" --design-system -p \"Nivedan\" -f markdown)",
+      "Bash(python scripts/search.py \"civic legal AI assistant government India trust\" --design-system -p \"Nivedan\" -f markdown)"
     ]
   }
 }

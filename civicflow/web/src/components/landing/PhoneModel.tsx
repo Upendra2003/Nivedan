@@ -128,6 +128,11 @@ export default function PhoneModel({ section }: Props) {
   const pendingSec = useRef(0);
   const [visibleSection, setVisibleSection] = useState(0);
 
+  // Section-change spin (360° Y)
+  const spinProgress = useRef(0);
+  const spinActive   = useRef(false);
+  const SPIN_DURATION = 0.72; // seconds for one full 360°
+
   // Drag
   const isDragging = useRef(false);
   const dragStart  = useRef({ x: 0, y: 0 });
@@ -156,6 +161,11 @@ export default function PhoneModel({ section }: Props) {
     pendingSec.current = section;
     slideRef.current   = 0;
     swapped.current    = false;
+    // Trigger 360° spin on each section change (skip during intro)
+    if (introDone.current) {
+      spinProgress.current = 0;
+      spinActive.current   = true;
+    }
   }, [section]);
 
   const onPointerDown = (e: any) => {
@@ -231,10 +241,23 @@ export default function PhoneModel({ section }: Props) {
       userRotX.current = THREE.MathUtils.lerp(userRotX.current, 0, 0.05);
     }
 
+    // Section-change spin (360° Y rotation)
+    if (spinActive.current) {
+      spinProgress.current += delta / SPIN_DURATION;
+      if (spinProgress.current >= 1) {
+        spinProgress.current = 0;
+        spinActive.current   = false;
+      }
+    }
+    // Ease-in-out curve so spin accelerates then decelerates
+    const sp = spinProgress.current;
+    const spinEased = sp < 0.5 ? 2 * sp * sp : 1 - Math.pow(-2 * sp + 2, 2) / 2;
+    const spinAngle = spinActive.current ? spinEased * Math.PI * 2 : 0;
+
     // Parallax
     const py = isDragging.current ? 0 : mouseX.current * 0.12;
     const px = isDragging.current ? 0 : -mouseY.current * 0.07;
-    groupRef.current.rotation.y = userRotY.current + py;
+    groupRef.current.rotation.y = userRotY.current + py + spinAngle;
     groupRef.current.rotation.x = 0.055 + userRotX.current + px;
 
     if (screenLightRef.current) {
