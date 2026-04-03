@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.3.2-blue" />
+  <img src="https://img.shields.io/badge/version-2.3.7-blue" />
   <img src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey" />
   <img src="https://img.shields.io/badge/AI-Sarvam%20AI-orange" />
   <img src="https://img.shields.io/badge/license-MIT-green" />
@@ -28,6 +28,7 @@ Users describe their problem by voice or text. The AI agent (powered by Sarvam A
 
 | Service | URL |
 |---------|-----|
+| Web Frontend | https://nivedan-web.vercel.app |
 | Backend API | https://nivedan.onrender.com |
 | Mock Govt Portal | https://nidean-govt-mock-portal.onrender.com/portal/dashboard |
 
@@ -36,6 +37,22 @@ Users describe their problem by voice or text. The AI agent (powered by Sarvam A
 ---
 
 ## Changelog
+
+<details>
+<summary><strong>v2.3.7</strong> — Web Frontend Overhaul & Deployment</summary>
+
+- Redesigned landing page with glassmorphism floating hero cards, marquee issue ticker, dark navy CTA section, and testimonial grid
+- 3D phone model now rotates 360° between sections and runs a 2-spin intro animation on load
+- Phone slides left/right between content sections driven by scroll position
+- Section accent panels added to fill whitespace beside the phone on desktop
+- Floating language cards in 4 languages (Hindi, Telugu, Tamil, Malayalam) flank the phone hero
+- Full responsive layout: `< 960px` routes to a single-column `MobileLanding` component; phone centered at X=0
+- Fixed phone reload jump bug (intro animation fought slide animation on first mount — resolved with `mountedRef` guard)
+- Replaced Tailwind CDN with proper PostCSS install (`tailwindcss@3`, `postcss`, `autoprefixer`) — production ready
+- Added `vercel.json` SPA rewrite rule so React Router routes resolve correctly on Vercel
+- Web frontend deployed to Vercel
+
+</details>
 
 <details>
 <summary><strong>v2.3.2</strong> — Full Multilingual Chat (Sarvam AI)</summary>
@@ -121,7 +138,7 @@ All four components run independently and communicate over HTTP. MongoDB is the 
 | Layer | Technology |
 |-------|-----------|
 | Mobile | React Native 0.81.5 + Expo SDK 54, expo-router |
-| Web | React 19 + Vite 7 + TypeScript, Tailwind CDN |
+| Web | React 19 + Vite 7 + TypeScript, Tailwind CSS (PostCSS) |
 | Backend | Flask 3, Python 3.11+, `uv` package manager |
 | Mock Portal | Flask 3, port 5001 |
 | Database | MongoDB 7+, raw pymongo (no ORM) |
@@ -319,6 +336,8 @@ The mock portal simulates the government's complaint intake system.
 | 10 | Multilingual UI (i18n), mobile polish, animations | ✅ |
 | 11 | Web UI overhaul, Nivedan branding | ✅ |
 | 12 | CoT thinking strip, error hardening, chat continuity | ✅ |
+| 13 | Full multilingual chat — Sarvam transliteration + native-script replies | ✅ |
+| 14 | Web landing redesign, responsive layout, 3D phone animations, Vercel deploy | ✅ |
 
 ---
 
