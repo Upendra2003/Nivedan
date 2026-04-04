@@ -53,7 +53,7 @@ const SECTIONS = [
     num: '02', label: 'GET STARTED', phoneRight: false,
     h2: ['One Account.', 'Every Complaint.'],
     body: 'Register once with your phone number. Nivedan remembers your details so every future complaint takes seconds — not days.',
-    stats: [{ n: '10k+', sub: 'Users' }, { n: '7', sub: 'Portals' }, { n: '< 5 min', sub: 'To File' }],
+    //stats: [{ n: '10k+', sub: 'Users' }, { n: '7', sub: 'Portals' }, { n: '< 5 min', sub: 'To File' }],
   },
   {
     num: '03', label: 'LANGUAGES', phoneRight: true,
@@ -292,24 +292,24 @@ function SectionAccent({ idx, visible }: { idx: number; visible: boolean }) {
     ? { right: '2.5%' } : { left: '2.5%' };
 
   const accentContent: React.ReactNode = (() => {
-    if (idx === 1) return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {accentCard(<>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Citizens Helped</div>
-          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 32, fontWeight: 900, color: '#1B2A4A', lineHeight: 1 }}>10,000+</div>
-          <div style={{ fontFamily: FONT_UI, fontSize: 11, color: 'rgba(27,42,74,0.45)', marginTop: 4 }}>Across 7 govt. portals</div>
-        </>)}
-        {accentCard(<>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Avg. Time</div>
-              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 900, color: '#1B2A4A' }}>{'< 5 min'}</div>
-            </div>
-            <FiZap size={28} color="rgba(232,137,26,0.25)" />
-          </div>
-        </>, '1.5s')}
-      </div>
-    );
+    // if (idx === 1) return (
+    //   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    //     {accentCard(<>
+    //       <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Citizens Helped</div>
+    //       <div style={{ fontFamily: FONT_DISPLAY, fontSize: 32, fontWeight: 900, color: '#1B2A4A', lineHeight: 1 }}>10,000+</div>
+    //       <div style={{ fontFamily: FONT_UI, fontSize: 11, color: 'rgba(27,42,74,0.45)', marginTop: 4 }}>Across 7 govt. portals</div>
+    //     </>)}
+    //     {accentCard(<>
+    //       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    //         <div>
+    //           <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Avg. Time</div>
+    //           <div style={{ fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 900, color: '#1B2A4A' }}>{'< 5 min'}</div>
+    //         </div>
+    //         <FiZap size={28} color="rgba(232,137,26,0.25)" />
+    //       </div>
+    //     </>, '1.5s')}
+    //   </div>
+    // );
     if (idx === 2) return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {[
@@ -356,7 +356,7 @@ function SectionAccent({ idx, visible }: { idx: number; visible: boolean }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {accentCard(<>
           <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Portal Status</div>
-          {['Labour Dept.', 'Cyber Crime Cell', 'Consumer Forum', 'Police HQ'].map((p, i) => (
+          {['Labour Dept.', 'Cyber Crime Cell', 'Consumer Forum', 'Police HQ'].map((p) => (
             <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontFamily: FONT_UI, fontSize: 11, color: 'rgba(27,42,74,0.65)' }}>{p}</span>
               <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#22C55E', letterSpacing: '0.04em' }}>● LIVE</span>
@@ -635,12 +635,12 @@ function SectionContent({ idx }: { idx: number }) {
 }
 
 // ── Final CTA ─────────────────────────────────────────────────────────────────
-const DARK_STATS = [
-  { n: '10k+',   label: 'Citizens Helped' },
-  { n: '4.8★',   label: 'App Rating' },
-  { n: '< 5 min', label: 'To File' },
-  { n: '8+',     label: 'Languages' },
-];
+// const DARK_STATS = [
+//   { n: '10k+',   label: 'Citizens Helped' },
+//   { n: '4.8★',   label: 'App Rating' },
+//   { n: '< 5 min', label: 'To File' },
+//   { n: '8+',     label: 'Languages' },
+// ];
 
 function FinalCTA() {
   const navigate = useNavigate();
@@ -685,7 +685,7 @@ function FinalCTA() {
           display: 'flex', justifyContent: 'center', alignItems: 'center',
           gap: 0, flexWrap: 'wrap', marginBottom: 64,
         }}>
-          {DARK_STATS.map((s, i) => (
+          {/* {DARK_STATS.map((s, i) => (
             <div key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ textAlign: 'center', padding: '0 36px' }}>
                 <div style={{ fontFamily: FONT_DISPLAY, fontSize: 'clamp(28px,4vw,40px)', fontWeight: 900, color: '#E8891A' }}>{s.n}</div>
@@ -693,7 +693,7 @@ function FinalCTA() {
               </div>
               {i < DARK_STATS.length - 1 && <div className="dark-stat-divider" />}
             </div>
-          ))}
+          ))} */}
         </div>
 
         {/* Testimonials */}
@@ -770,7 +770,7 @@ function FinalCTA() {
           textAlign: 'center', fontFamily: FONT_UI, fontSize: 12,
           color: 'rgba(255,255,255,0.28)',
         }}>
-          4.8 / 5 rating · 10,000+ complaints filed · 100% free · No ads
+          100% free · No ads
         </p>
       </div>
     </section>
