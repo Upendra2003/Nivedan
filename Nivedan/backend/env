@@ -1,0 +1,5 @@
+MONGO_URI=mongodb://localhost:27017/Nivedan
+JWT_SECRET=change-me-in-production
+SARVAM_API_KEY=sk_qx6uqw5y_G2jJ76z2NMEDjfxOb6cTxH4m
+SARVAM_API_URL=https://api.sarvam.ai
+MOCK_PORTAL_URL=http://localhost:5001

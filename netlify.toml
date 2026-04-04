@@ -1,6 +1,6 @@
 [build]
   # This tells Netlify to look inside your project folder
-  base = "civicflow/web"
+  base = "Nivedan/web"
   # This is the command to build your site
   command = "npm run build"
   # This is where the built files are located (relative to the base)

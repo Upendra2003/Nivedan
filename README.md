@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="civicflow/GitHubCoverPhoto.png" alt="Nivedan Cover" width="40%" />
+  <img src="Nivedan/GitHubCoverPhoto.png" alt="Nivedan Cover" width="40%" />
 </p>
 
 <h1 align="center">Nivedan</h1>
@@ -122,7 +122,7 @@ Users describe their problem by voice or text. The AI agent (powered by Sarvam A
 ## Architecture
 
 ```
-civicflow/
+Nivedan/
 ├── backend/        Flask REST API           — port 5000  (uv managed, Python 3.11+)
 ├── mock_portal/    Mock Government Portal   — port 5001  (uv managed)
 ├── mobile/         React Native + Expo 54   — citizen app
@@ -165,26 +165,26 @@ All four components run independently and communicate over HTTP. MongoDB is the 
 
 ### Backend
 ```bash
-cd civicflow/backend
+cd Nivedan/backend
 cp .env.example .env      # fill in JWT_SECRET and SARVAM_API_KEY
 uv sync
 ```
 
 ### Mock Portal
 ```bash
-cd civicflow/mock_portal
+cd Nivedan/mock_portal
 uv sync
 ```
 
 ### Mobile
 ```bash
-cd civicflow/mobile
+cd Nivedan/mobile
 npm install
 ```
 
 ### Web
 ```bash
-cd civicflow/web
+cd Nivedan/web
 npm install
 ```
 
@@ -192,9 +192,9 @@ npm install
 
 ## Environment Variables
 
-### `civicflow/backend/.env` — local dev
+### `Nivedan/backend/.env` — local dev
 ```env
-MONGO_URI=mongodb://localhost:27017/civicflow
+MONGO_URI=mongodb://localhost:27017/Nivedan
 JWT_SECRET=replace-with-a-long-random-string
 SARVAM_API_KEY=your-sarvam-api-key-here
 MOCK_PORTAL_URL=http://localhost:5001
@@ -208,7 +208,7 @@ SARVAM_API_KEY=<from-sarvam-dashboard>
 MOCK_PORTAL_URL=https://nidean-govt-mock-portal.onrender.com
 ```
 
-### `civicflow/mobile/.env`
+### `Nivedan/mobile/.env`
 ```env
 # Local dev — get LAN IP via: ipconfig → Wi-Fi IPv4
 EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:5000
@@ -227,16 +227,16 @@ Start MongoDB first, then:
 
 ```bash
 # Terminal 1 — Backend
-cd civicflow/backend && uv run python app.py
+cd Nivedan/backend && uv run python app.py
 
 # Terminal 2 — Mock Portal
-cd civicflow/mock_portal && uv run python portal_app.py
+cd Nivedan/mock_portal && uv run python portal_app.py
 
 # Terminal 3 — Web
-cd civicflow/web && npm run dev
+cd Nivedan/web && npm run dev
 
 # Terminal 4 — Mobile
-cd civicflow/mobile && npx expo start --clear
+cd Nivedan/mobile && npx expo start --clear
 ```
 
 | Service | URL |
