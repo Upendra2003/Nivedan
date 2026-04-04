@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.3.7-blue" />
+  <img src="https://img.shields.io/badge/version-2.5.8-blue" />
   <img src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey" />
   <img src="https://img.shields.io/badge/AI-Sarvam%20AI-orange" />
   <img src="https://img.shields.io/badge/license-MIT-green" />
@@ -37,6 +37,15 @@ Users describe their problem by voice or text. The AI agent (powered by Sarvam A
 ---
 
 ## Changelog
+
+<details>
+<summary><strong>v2.5.8</strong> — Mobile 3D Centering Fix & MCP Tooling</summary>
+
+- Fixed 3D phone model drifting right after intro spin on mobile layout — `fromX`/`toX` refs now initialize to `0` when `center=true`, preventing post-intro slide to `TARGET_X[0]`
+- Added **code-review-graph** MCP server (`uvx code-review-graph serve`) for structural code analysis, impact radius, and review context
+- Added **Stitch** MCP server (`@anthropic-ai/mcp-server-stitch`) for Claude-powered UI/UX screen generation and design system management
+
+</details>
 
 <details>
 <summary><strong>v2.3.7</strong> — Web Frontend Overhaul & Deployment</summary>
