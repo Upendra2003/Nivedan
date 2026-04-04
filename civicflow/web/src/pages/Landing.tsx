@@ -356,7 +356,7 @@ function SectionAccent({ idx, visible }: { idx: number; visible: boolean }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {accentCard(<>
           <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#C9731A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Portal Status</div>
-          {['Labour Dept.', 'Cyber Crime Cell', 'Consumer Forum', 'Police HQ'].map((p, i) => (
+          {['Labour Dept.', 'Cyber Crime Cell', 'Consumer Forum', 'Police HQ'].map((p) => (
             <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontFamily: FONT_UI, fontSize: 11, color: 'rgba(27,42,74,0.65)' }}>{p}</span>
               <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: '#22C55E', letterSpacing: '0.04em' }}>● LIVE</span>
