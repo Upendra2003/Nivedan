@@ -5,7 +5,7 @@
 <h1 align="center">Nivedan</h1>
 
 <p align="center">
-  <em>AI-powered civic complaint assistant for Indian citizens — file government complaints in your own language.</em>
+  <em>AI-powered civic complaint assistant for Indian citizens, file government complaints in your own language.</em>
 </p>
 
 <p align="center">
