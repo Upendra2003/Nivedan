@@ -7,7 +7,8 @@ import re
 import os
 import base64
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from bson import ObjectId
 from db import db
 from services.sarvam import chat_completion
@@ -247,6 +248,30 @@ def _lang(user: dict) -> str:
     return LANG_NAMES.get(code, "English")
 
 
+def _is_date_field(field_key: str) -> bool:
+    return "date" in field_key.lower()
+
+
+def _normalize_relative_date(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return text
+
+    lowered = re.sub(r"\s+", " ", text.lower())
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    relative_dates = {
+        "today": now_ist,
+        "yesterday": now_ist - timedelta(days=1),
+        "day before yesterday": now_ist - timedelta(days=2),
+        "before yesterday": now_ist - timedelta(days=2),
+    }
+
+    if lowered in relative_dates:
+        return relative_dates[lowered].strftime("%d/%m/%Y")
+
+    return text
+
+
 def _system_prompt(state: str, form_data: dict, user_name: str, language: str, cfg: dict) -> str:
     fields        = cfg["fields"]
     missing       = _missing(form_data, fields)
@@ -301,6 +326,7 @@ ACTION: none|fetch_form|collect_fields|fill_form|submit
 - NEVER include "EXTRACTED:" or "ACTION:" text in your visible reply. They are metadata only, stripped before display.
 - When you learn a value, confirm it naturally in your reply (e.g. "Got it, ₹20,000 pending.")
 - Do NOT list all fields you need. Ask for ONE thing, wait, then ask the next.
+- If the user gives a relative date like "today", "yesterday", or "day before yesterday", convert it to an absolute date in DD/MM/YYYY inside EXTRACTED.
 - When ACTION: fill_form — do NOT write a summary yourself; the system generates it automatically."""
 
 
@@ -401,16 +427,16 @@ def _handle_greeting(cid, form_data: dict, cfg: dict, user: dict, language: str)
     authority = cfg["authority"]
 
     greet_en = (
-        f"Hello {user_name}! I'm CivicFlow AI, your legal assistant. "
+        f"Hello {user_name}! I'm Sarvam AI, your legal assistant. "
         f"I'll help you file a {title} complaint with the {authority}. "
         f"Tell me what happened — can you describe the situation?"
     )
     greet_map = {
-        "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
-        "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
-        "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
-        "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
-        "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
+        "hi": f"नमस्ते {user_name}! मैं Sarvam AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
+        "ta": f"வணக்கம் {user_name}! நான் Sarvam AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
+        "te": f"నమస్కారం {user_name}! నేను Sarvam AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
+        "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು Sarvam AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
+        "ml": f"നമസ്കാരം {user_name}! ഞാൻ Sarvam AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
     }
     greeting_text = greet_map.get(lang_code, greet_en)
     # Save greeting as first assistant entry so resume can display it.
@@ -554,8 +580,9 @@ def _handle_llm_turn(
         # In PREVIEW state, accept any non-empty string key so user corrections
         # (e.g. "change my email") aren't silently dropped by the config allowlist.
         if val and (key in valid_keys or state == "PREVIEW") and len(str(val)) < 500:
-            form_data[key] = str(val)
-            thinking_steps.append(f"📝 Noted: {key.replace('_', ' ')} = {val}")
+            normalized_val = _normalize_relative_date(val) if _is_date_field(key) else str(val)
+            form_data[key] = normalized_val
+            thinking_steps.append(f"📝 Noted: {key.replace('_', ' ')} = {normalized_val}")
 
     # ── Fallback: LLM emitted only metadata, no visible reply ─────────────
     if not reply_text and llm_action in ("none", "collect_fields", ""):

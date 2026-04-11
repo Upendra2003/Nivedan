@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -11,6 +12,8 @@ from models.user import SUPPORTED_LANGUAGES, user_schema
 from services.auth_middleware import jwt_required
 
 auth_bp = Blueprint("auth", __name__)
+
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +53,9 @@ def register():
 
     if not all([name, email, password, phone]):
         return jsonify({"error": "name, email, password, and phone are required"}), 400
+
+    if not _EMAIL_RE.fullmatch(email):
+        return jsonify({"error": "invalid email format"}), 400
 
     if preferred_language not in SUPPORTED_LANGUAGES:
         return jsonify({
