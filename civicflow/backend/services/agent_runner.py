@@ -401,16 +401,16 @@ def _handle_greeting(cid, form_data: dict, cfg: dict, user: dict, language: str)
     authority = cfg["authority"]
 
     greet_en = (
-        f"Hello {user_name}! I'm CivicFlow AI, your legal assistant. "
+        f"Hello {user_name}! I'm Sarvam AI, your legal assistant. "
         f"I'll help you file a {title} complaint with the {authority}. "
         f"Tell me what happened — can you describe the situation?"
     )
     greet_map = {
-        "hi": f"नमस्ते {user_name}! मैं CivicFlow AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
-        "ta": f"வணக்கம் {user_name}! நான் CivicFlow AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
-        "te": f"నమస్కారం {user_name}! నేను CivicFlow AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
-        "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು CivicFlow AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
-        "ml": f"നമസ്കാരം {user_name}! ഞാൻ CivicFlow AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
+        "hi": f"नमस्ते {user_name}! मैं Sarvam AI हूँ। मैं आपकी {title} शिकायत दर्ज करने में मदद करूँगा। कृपया बताएं — क्या हुआ?",
+        "ta": f"வணக்கம் {user_name}! நான் Sarvam AI. உங்கள் {title} புகாரில் உதவுவேன். என்ன நடந்தது என்று சொல்லுங்கள்.",
+        "te": f"నమస్కారం {user_name}! నేను Sarvam AI. మీ {title} సమస్యలో సహాయం చేస్తాను. ఏమి జరిగింది?",
+        "kn": f"ನಮಸ್ಕಾರ {user_name}! ನಾನು Sarvam AI. ನಿಮ್ಮ {title} ದೂರು ಸಲ್ಲಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ. ಏನಾಯಿತು?",
+        "ml": f"നമസ്കാരം {user_name}! ഞാൻ Sarvam AI. നിങ്ങളുടെ {title} പരാതി ഫയൽ ചെയ്യാൻ സഹായിക്കും. എന്ത് സംഭവിച്ചു?",
     }
     greeting_text = greet_map.get(lang_code, greet_en)
     # Save greeting as first assistant entry so resume can display it.
